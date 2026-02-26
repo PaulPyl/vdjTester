@@ -1,0 +1,91 @@
+---
+title: "VDJ Pipeline Comparison Report"
+date: "`r Sys.Date()`"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 2
+    self-contained: true
+    fig-cap-location: top
+    lightbox:
+      match: auto
+      effect: fade
+      desc-position: right
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+library(ggplot2)
+library(knitr)
+
+# Load summary data
+summary_file <- "summary_data.rds"
+if (file.exists(summary_file)) {
+  summary_df <- readRDS(summary_file)
+} else {
+  summary_df <- read.csv("comparison_summary.csv")
+}
+
+# Get list of PNG files in current directory
+png_files <- list.files(".", pattern = "\\.png$")
+venn_files <- png_files[grepl("^venn_", png_files)]
+other_files <- setdiff(png_files, venn_files)
+
+# Set up knitr options for better image handling
+knitr::opts_chunk$set(
+  fig.align = "center",
+  dpi = 96,
+  fig.width = 10,
+  fig.height = 6,
+  fig.retina = 2
+)
+```
+
+## Summary Statistics
+
+The following table shows the sequence coverage and accuracy metrics for each pipeline:
+
+```{r summary-table}
+knitr::kable(summary_df, digits = 3, caption = "Pipeline Comparison Summary")
+```
+
+## Accuracy Comparison
+
+This section shows V-gene, J-gene, and CDR3 calling accuracy across all pipelines:
+
+![Accuracy Comparison](accuracy_comparison.png){group="main_plots"}
+
+## Sequence Overlap
+
+This stacked bar chart shows the distribution of sequences: those shared with the reference, those unique to each pipeline, and reference-only sequences:
+
+![Sequence Overlap](sequence_overlap.png){group="main_plots"}
+
+## Venn Diagrams
+
+The following Venn diagrams show the overlap between sequences called by each pipeline and those in the reference data. **Important:** The presence of "Pipeline Only" sequences indicates that the pipeline identified sequences not yet validated in the reference data. This can occur when (1) the reference data is incomplete, or (2) the pipeline is making false positive calls. Investigation of these cases is recommended.
+
+```{r venn-diagrams}
+for (venn_file in sort(venn_files)) {
+  pipeline_name <- sub("^venn_", "", sub("\\.png$", "", venn_file))
+  cat("\n###", pipeline_name, "\n\n")
+  cat("![Venn Diagram -", pipeline_name, "](", venn_file, "){group=\"venn_plots\"}\n\n")
+}
+```
+
+## Interpretation Guide
+
+- **Shared Sequences**: Sequences identified by both the pipeline and reference data
+- **Pipeline Only**: Sequences called by the pipeline but not in the reference data
+  - May indicate pipeline false positives or incomplete reference data
+- **Reference Only**: Sequences in the reference data but not called by the pipeline
+  - May indicate missed sequences (false negatives)
+- **V/J/CDR3 Accuracy**: Percentage of shared sequences where the pipeline call matches the reference call exactly
+
+## Methodology
+
+This report compares the outputs of multiple VDJ assignment pipelines against a reference dataset. Each pipeline's called sequences are matched to the reference by sequence identifier, and accuracy metrics are computed only for sequences present in both datasets. Venn diagrams provide a visual representation of sequence coverage overlap, allowing identification of sequences that may need further investigation or validation.
