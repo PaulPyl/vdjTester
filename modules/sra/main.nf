@@ -8,36 +8,9 @@ process RUN_SRA_DOWNLOAD {
 
     stub:
     """
+    # Copy existing fastq samples from reference_data instead of generating new ones
     mkdir -p fastq_samples
-    
-    # Create a small example fastq file for each sample
-    for i in {1..3}; do
-        mkdir -p fastq_samples/sample_${i}_sample
-        echo "@read1
-ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT
-+
-III
-@read2
-TGCATGCATGCATGCATGCATGCATGCATGCATGCATGCA
-+
-III
-@read3
-CGATCGATCGATCGATCGATCGATCGATCGATCGATCGAT
-+
-III" > fastq_samples/sample_${i}_sample/sample_${i}_S1_L001_R1_001.fastq.gz
-        echo "@read1
-ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT
-+
-III
-@read2
-TGCATGCATGCATGCATGCATGCATGCATGCATGCATGCA
-+
-III
-@read3
-CGATCGATCGATCGATCGATCGATCGATCGATCGATCGAT
-+
-III" > fastq_samples/sample_${i}_sample/sample_${i}_S1_L001_R2_001.fastq.gz
-    done
+    cp -r ${projectDir}/reference_data/fastq_samples/* fastq_samples/
     """
 
     script:
