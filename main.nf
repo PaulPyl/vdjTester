@@ -46,15 +46,17 @@ workflow {
     ch_input_annotations = Channel.fromPath(params.input_annotations)
     ch_reference = Channel.fromPath(params.reference_data)
 
-    // Download / subsample SRA fastqs and then run CellRanger (version check)
+    // Download / subsample SRA fastqs 
     ch_fastqs = RUN_SRA_DOWNLOAD()
-    RUN_CELLRANGER(ch_fastqs)
 
-    // Run Immcantation 10x pipeline
-    RUN_IMMCANTATION(ch_input_fasta, ch_input_annotations)
+    // Run CellRanger with SRA data
+    ch_cellranger_out = RUN_CELLRANGER(ch_fastqs)
 
-    // Run MixCR pipeline
-    RUN_MIXCR(ch_input_fasta)
+    // Run Immcantation 10x pipeline with CellRanger output
+    RUN_IMMCANTATION(ch_cellranger_out, ch_input_annotations)
+
+    // Run MixCR pipeline with raw SRA data
+    RUN_MIXCR(ch_fastqs)
 
     // Collect all pipeline results into a single channel
     // Easy to extend: just add another .mix(NEW_PIPELINE.out.tsv) below
