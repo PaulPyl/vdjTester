@@ -75,16 +75,16 @@ consolidated repo works on both hosts.
 ## 4. Layout and sync
 
 ```
-vdjTester/                     git, GitHub (private)
+vdjTester/                     git, GitHub (public)
 ├── main.nf
 ├── nextflow.config            params + profiles only, no secrets
-├── conf/  local.config  dardel.config  test.config
-├── modules/local/<tool>/main.nf
+├── conf/  base.config  test.config  dardel.config
+├── modules/local/<tool>.nf
 ├── bin/                       scripts called by processes
-├── assets/                    multi-config template, marker gene lists
-├── containers/
-├── tests/data/                tiny inputs only
+├── assets/markers.tsv         B/T marker genes
+├── run_dardel.sh
 ├── docs/
+├── attic/v0/                  the Feb 2026 pipeline, kept for reference
 └── data/ archive/ results/ work/   gitignored
 ```
 
@@ -92,14 +92,16 @@ vdjTester/                     git, GitHub (private)
   with `git pull`. Never rsync code.
 - **Large files never sync.** Each host fetches its own FASTQs and references through
   the pipeline's download step (with `storeDir`), and has its own CellRanger install.
-- **On Dardel:** clone into `~/Projects/WABI_Common/vdjTester`. Put `workDir`,
-  `storeDir`, the CellRanger install and the references on project storage, not `$HOME`.
-  *Open question: which allocation should this use?*
+- **On Dardel:** clone into `~/Projects/WABI_Common/vdjTester`, which links to
+  `/cfs/klemming/projects/supr/uppstore2017171/paulpyl/`. **Decided 2026-10-15:** same
+  allocation as G_Nordmark_nextflow, i.e. compute on **naiss2026-4-384** (NBIS
+  support) and storage in uppstore2017171. Downloads go to
+  `…/paulpyl/data/vdjTester_store` and Cell Ranger to
+  `…/paulpyl/tools/cellranger-10.0.0`, both outside the repo.
 - **Profiles:**
-  - `-profile test,local`: stub runs on the laptop. The Mac is arm64, so real
-    containers would run under amd64 emulation; use the laptop for development only.
-  - `-profile dardel`: Slurm with `--account`, Apptainer, and escalating `time` on
-    retry.
+  - `-profile test -stub`: wiring check on the laptop, without containers.
+  - `-profile dardel` (via `run_dardel.sh`): Slurm on `shared`, with Cell Ranger alone
+    on `main` (whole node). Apptainer, with `time` escalating on retry.
 
 ## 5. v0.1: the most basic run that means something
 
@@ -110,27 +112,46 @@ should run end to end on Dardel.
 **Data:** 10x "1k B cells, 5′ v2, GEX + BCR" (`sc5p_v2_hs_B_1k_multi_5gex_b`, already
 on the laptop).
 
-| step | process | input → output |
-|---|---|---|
-| 1 | `FETCH_10X_EXAMPLE` (storeDir) | URLs → FASTQs, GEX ref 2020-A, VDJ ref |
-| 2 | `CELLRANGER_MULTI` | FASTQs + refs + `assets/multi_config.csv` → filtered feature matrix, `vdj_b/filtered_contig.{fasta,csv}`, `airr_rearrangement.tsv` |
-| 3 | `IMMCANTATION` | CellRanger contigs → `AssignGenes igblast` → `MakeDb igblast --10x` → AIRR TSV. Re-annotates CellRanger's assembly; reuse the module that ran on 25 Feb |
-| 4 | `MIXCR` | **raw BCR FASTQs** → `mixcr analyze 10x-sc-xcr-vdj` → `exportAirr`. Assembles independently of CellRanger |
-| 5 | `COMPARE_VDJ` | three AIRR TSVs → per barcode and locus: chain called (y/n), V/J gene, junction_aa agreement; UpSet-style counts |
-| 6 | `EXPRESSION_CHECK` | filtered matrix + all VDJ calls → cell-type × VDJ table (§5a) |
-| 7 | `REPORT` | Quarto HTML collecting steps 5 and 6 |
+**Language: Python.** The decision was made on 2026-10-15. The Immcantation steps
+used here (`changeo-10x`: IgBLAST + Change-O) are Python too, so R isn't needed
+anywhere. All Python steps share the scanpy 1.12 image that G_Nordmark_nextflow uses.
 
-Every tool exports AIRR format: CellRanger writes `airr_rearrangement.tsv`, Immcantation
-works in AIRR natively, and MiXCR has `exportAirr`. Standardising on AIRR removes the
-need for per-tool column renaming (like the current awk hack in the MiXCR module).
+| step | process (file) | input → output | status |
+|---|---|---|---|
+| 1 | `FETCH_TAR` (`modules/local/fetch_tar.nf`) | URLs → FASTQs, GEX ref 2024-A, VDJ ref 7.1.0 in `store_dir` | written |
+| 2 | `CELLRANGER_MULTI` | FASTQs + refs → filtered matrix, `vdj_b/`, `vdj_t/`. Writes its config from `params.libraries` | written; config generation tested with a fake `cellranger` |
+| 3 | `IMMCANTATION` | Cell Ranger contigs → `changeo-10x` → AIRR `db-pass` TSV | written (same command as the 25 Feb run) |
+| 4 | `MIXCR` | **raw** VDJ FASTQs → `mixcr analyze 10x-sc-xcr-vdj` → per-cell `exportClones` | written; **export field names need checking on the first real run** |
+| 4b | `TRUST4` | **raw** VDJ FASTQs (and optionally the GEX library) → `*_barcode_airr.tsv` | **planned**, see below |
+| 5 | `COMPARE_VDJ` (`bin/vdj_compare.py`) | all tools' calls → per tool, cell and locus top chain; summary and pairwise V/J/CDR3 agreement | written; tested on 10x's published contigs |
+| 6 | `EXPRESSION_CHECK` (`bin/expression_check.py`) | filtered matrix + VDJ classes → B/T/hybrid/doublet classes × VDJ (§5a) | written; tested on synthetic data with planted hybrids |
+| 7 | `REPORT` | HTML from steps 5 and 6 | later |
+
+`vdj_compare.py` reads each tool's native output and reduces it to the same columns
+itself. That proved more robust than relying on each tool's AIRR export:
+- Barcodes lose their `-1` suffix.
+- Genes keep only the first call, without the allele.
+- CDR3s are compared without the conserved C and W/F, because tools disagree on
+  whether those belong to the CDR3.
+
 Agreement is measured between tools. The old `BCR_data.tsv` "reference" is dropped,
 because it comes from different cells.
 
+**TRUST4 (planned, decided 2026-10-15).** It's a second assembler that works from raw
+reads, alongside MiXCR, so Cell Ranger's assembly is no longer the only one.
+- Container: `quay.io/biocontainers/trust4:1.1.10--h5814d7d_0`.
+- References: `hg38_bcrtcr.fa` and `human_IMGT+C.fa` from the TRUST4 repository,
+  fetched with `FETCH_TAR`-style storage.
+- 10x 5′ run: `run-trust4 -u R2 --barcode R1 --barcodeRange 0 15 + --UMI R1 --UMIRange 16 25 + -f hg38_bcrtcr.fa --ref human_IMGT+C.fa`.
+  Its `*_barcode_airr.tsv` can go through the Immcantation (AIRR) reader.
+- Extra: TRUST4 can also run on the **GEX** library, recovering receptors without VDJ
+  enrichment. That gives a third view for the expression-vs-VDJ question.
+
 ### 5a. Expression vs. VDJ
 
-1. **QC and doublets:** filter cells with the usual QC thresholds, then call doublets
-   with scDblFinder (R) or scrublet (Python). Record a doublet score per cell; don't
-   just drop the doublets.
+1. **QC and doublets:** flag (don't drop) cells failing QC (fewer than 200 genes or
+   more than 20 % mitochondrial reads), then call doublets with Scrublet
+   (`sc.pp.scrublet`). Record a doublet score per cell; don't just drop the doublets.
 2. **Marker scores** (module score / AUCell on log-normalised counts):
    - B: `CD79A CD79B MS4A1 CD19 CD22 PAX5 BANK1`
    - T: `CD3D CD3E CD3G CD2 CD247 LCK`
@@ -162,25 +183,37 @@ because it comes from different cells.
 sample with no TCR library, so in v0.1 the T arm only measures B-cell purity. The
 second dataset for v0.2 should be a 10x **PBMC 5′ multi with both VDJ-B and VDJ-T
 libraries**, ideally with feature barcoding (CD3/CD19 antibodies as protein-level
-ground truth for the hybrids). The exact dataset name is still to be chosen from the
-10x datasets page. CellRanger multi then needs both `VDJ-B` and `VDJ-T` libraries in
-the config, and MiXCR needs one run per chain type, or its combined preset.
+ground truth for the hybrids).
+
+**Chosen (see `docs/datasets.md`):** 10x "Human PBMC from a Healthy Donor, 10k cells
+(v2)", 5′ v2, Cell Ranger 5.0.0.
+- Libraries: GEX + antibody capture (CD3, CD19, no CD20) + VDJ-B + VDJ-T.
+- About 15.9 GB of FASTQs, and 10x ships a `multi` config.
+- 95 barcodes already carry both IG and TR contigs in 10x's own output.
+
+Backup: "5k Human PBMCs, TotalSeq-C TBNK, NextGEM 5′" (Cell Ranger 8.0.0, 33 GB).
+
+For v0.2:
+- `params.libraries` gets a `VDJ-T` row and an `Antibody Capture` row, plus the
+  `[feature]` reference section.
+- MiXCR then runs once per VDJ library; the pipeline already does this.
 
 ### Order of work
 
-1. Fix the secret, make the WIP snapshot branch, collect the files from §3. *(½ day)*
-2. Rebuild `main.nf` from the last working commit `346cfec`: one process per tool and
-   a named `workflow {}` block per test entry. Get `nextflow run -stub -profile test`
-   working locally.
-3. On Dardel: `FETCH` + `CELLRANGER_MULTI`. **This is the biggest unknown:** CellRanger
-   runs in an `ubuntu` container with a bind mount, and 1k cells needs about 16 cores,
-   64 GB, and 1–2 h.
-4. `IMMCANTATION` and `MIXCR` on the real outputs. `MIXCR` needs the new licence as a
-   Nextflow secret.
-5. `COMPARE_VDJ` on AIRR inputs.
-6. `EXPRESSION_CHECK` + `REPORT`.
-7. v0.2: the PBMC B+T dataset, then subsampling to test how the tools behave at lower
-   read depth.
+1. ~~Fix the secret, make the WIP snapshot branch, collect the files from §3.~~ Done 2026-10-15.
+2. ~~Rebuild `main.nf`; `nextflow run . -profile test -stub` passes.~~ Done 2026-10-15.
+3. **Next, on Dardel:**
+   1. Replace the old checkout with a fresh clone.
+   2. Unpack Cell Ranger 10.0.0 to `…/paulpyl/tools/` (the tarball is already in the
+      old checkout's `bin/`).
+   3. `./run_dardel.sh -stub`, then a real run.
+   4. Watch Cell Ranger on `main` (64 cores, 200 GB).
+4. Fix what the first real run reveals, most likely the MiXCR export field names and
+   the changeo-10x output file name.
+5. Add `TRUST4`.
+6. Add `REPORT`.
+7. v0.2: PBMC 10k with B+T+ADT. Use the protein data as ground truth for B/T calls
+   and hybrids. Then subsample reads to test how the tools behave at lower depth.
 
 ## 6. Known bugs in the uncommitted rewrite (why it's a snapshot, not a base)
 

@@ -18,3 +18,7 @@ bin/cellranger-*.tar.gz
 .vscode/
 data/
 archive/
+results_test/
+container_cache/
+.nextflow_home/
+run_*.log

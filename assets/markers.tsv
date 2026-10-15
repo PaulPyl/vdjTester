@@ -1,0 +1,34 @@
+set	gene	note
+B	CD79A	BCR signalling (Ig-alpha)
+B	CD79B	BCR signalling (Ig-beta)
+B	MS4A1	CD20
+B	CD19
+B	CD22
+B	PAX5	B-lineage transcription factor
+B	BANK1
+T	CD3D	TCR complex
+T	CD3E	TCR complex
+T	CD3G	TCR complex
+T	CD2
+T	CD247	CD3 zeta
+T	LCK
+Ig_const	IGHM	VDJ-adjacent: reported separately, never used for the B/T call
+Ig_const	IGHD
+Ig_const	IGHG1
+Ig_const	IGHG2
+Ig_const	IGHG3
+Ig_const	IGHG4
+Ig_const	IGHA1
+Ig_const	IGHA2
+Ig_const	IGHE
+Ig_const	IGKC
+Ig_const	IGLC1
+Ig_const	IGLC2
+Ig_const	IGLC3
+Ig_const	IGLC7
+TR_const	TRAC	VDJ-adjacent: reported separately, never used for the B/T call
+TR_const	TRBC1
+TR_const	TRBC2
+TR_const	TRDC
+TR_const	TRGC1
+TR_const	TRGC2
