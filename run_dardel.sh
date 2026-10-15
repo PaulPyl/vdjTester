@@ -27,5 +27,14 @@ if ! nextflow secrets list 2>/dev/null | grep -qx MI_LICENSE; then
     exit 1
 fi
 
+# Stub outputs are empty placeholders. Keep them out of the real store_dir, or a
+# later real run would take them for finished downloads.
+extra=()
+for arg in "$@"; do
+    if [ "$arg" = "-stub" ] || [ "$arg" = "-stub-run" ]; then
+        extra=(--store_dir "${PWD}/results_stub/store" --outdir "${PWD}/results_stub")
+    fi
+done
+
 # -ansi-log false: plain lines, since the output is piped into a log file.
-nextflow run . -profile dardel -resume -ansi-log false "$@" 2>&1 | tee "run_$(date +%Y%m%d_%H%M%S).log"
+nextflow run . -profile dardel -resume -ansi-log false "${extra[@]}" "$@" 2>&1 | tee "run_$(date +%Y%m%d_%H%M%S).log"
