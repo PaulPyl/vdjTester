@@ -8,3 +8,13 @@ reference_data
 reference_data/*
 bin/cellranger-10.0.0/
 bin/cellranger-10.0.0/*
+# large or local-only files
+bin/cellranger
+bin/cellranger-*.tar.gz
+*.jar
+.DS_Store
+.cache/
+.continue/
+.vscode/
+data/
+archive/
