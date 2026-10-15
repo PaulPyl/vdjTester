@@ -1,6 +1,6 @@
 #!/bin/sh
 # wrapper script invoked by Nextflow's RUN_CELLRANGER process
-set -euo pipefail
+set -eu
 
 if [ "$#" -lt 1 ]; then
     echo "Usage: $0 <fastq_dir> [sample_id]" >&2
@@ -21,7 +21,7 @@ fi
 
 echo "Running cellranger vdj for sample $sample_id using fastqs in $fastq_dir"
 cellranger vdj \
-    --id="$sample_id" \
+    --id="${sample_id}_vdj" \
     --fastqs="$fastq_dir" \
     --sample="$sample_id" \
     --localmem=8

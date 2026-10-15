@@ -1,0 +1,211 @@
+{
+  "skill_name": "Nextflow Developer",
+  "version": "1.0.0",
+  "description": "A specialized development skill for creating, editing, and validating Nextflow DSL2 pipelines using official documentation and language server validation.",
+  
+  "capabilities": {
+    "documentation_reference": {
+      "primary_source": "https://www.nextflow.io/docs/latest/",
+      "version_requirement": "v25.10.4 or newer",
+      "key_guides": {
+        "getting_started": "https://www.nextflow.io/docs/latest/get-started.html",
+        "workflow_guide": "https://www.nextflow.io/docs/latest/workflow.html",
+        "dsl2_features": "https://www.nextflow.io/docs/latest/dsl2-features.html",
+        "executors": "https://www.nextflow.io/docs/latest/nextflow-executor.html",
+        "process_guide": "https://www.nextflow.io/docs/latest/process.html",
+        "process_stub": "https://www.nextflow.io/docs/latest/process.html#stub",
+        "process_script": "https://www.nextflow.io/docs/latest/process.html#script"
+      }
+    },
+    
+    "language_server": {
+      "command": "java -jar bin/language-server-all.jar",
+      "supported_extensions": [".nf", ".nextflow", "nextflow.config"],
+      "validation_features": [
+        "Syntax validation",
+        "Type checking for DSL2",
+        "Directive completion",
+        "Import resolution",
+        "Parameter validation"
+      ]
+    },
+    
+    "dsl2_standards": {
+      "syntax_requirements": [
+        "Directives do not use parentheses (e.g., storeDir, publishDir, cpus, memory)",
+        "Section ordering: tag → storeDir/publishDir → input → output → script → stub → when",
+        "Triple-quoted strings for multi-line scripts",
+        "Bash variable escaping with backslash: \${variable}"
+      ],
+      "directive_patterns": {
+        "tag": 'tag "Process Name"',
+        "storeDir": 'storeDir "${params.outdir}/module_name"',
+        "publishDir": "publishDir path: '\${params.outdir}/results', mode: 'copy'"  
+      }
+    }
+  },
+  
+  "workflow": {
+    "file_editing": {
+      "steps": [
+        {
+          "step": 1,
+          "action": "Analyze current file structure and identify editing objectives",
+          "tools": ["file exploration", "code review"]
+        },
+        {
+          "step": 2,
+          "action": "Reference official Nextflow documentation for syntax patterns and best practices",
+          "tools": ["documentation lookup", "version compatibility check"]
+        },
+        {
+          "step": 3,
+          "action": "Apply edits following DSL2 standards and section ordering guidelines",
+          "tools": ["edit tool", "AGENTS.md guidelines"]
+        },
+        {
+          "step": 4,
+          "action": "Validate edits using Nextflow language server",
+          "tools": ["language server validation"]
+        },
+        {
+          "step": 5,
+          "action": "Confirm validation results and iterate if needed",
+          "tools": ["error analysis", "syntax verification"]
+        }
+      ]
+    },
+    
+    "validation_process": {
+      "language_server_commands": {
+        "start_server": "java -jar bin/language-server-all.jar &",
+        "validate_file": "./bin/nextflow lint <filename.nf>",
+        "full_lint": "./bin/nextflow lint modules/ -c"
+      },
+      "validation_criteria": [
+        "Syntax correctness per DSL2 specification",
+        "Directive usage alignment with official documentation",
+        "Section ordering compliance",
+        "Module import structure validation",
+        "Channel and workflow connectivity"
+      ]
+    },
+    
+    "development_practices": {
+      "module_structure": {
+        "process_definition": {
+          "required_sections": ["tag", "storeDir/publishDir", "input", "output", "script", "stub"],
+          "optional_sections": ["when", "label"]
+        },
+        "workflow_definition": {
+          "components": [
+            "channel creation",
+            "module invocation",
+            "channel operations (mix, collect)",
+            "output channel assignment"
+          ]
+        }
+      },
+      "stub_mode_support": {
+        "enabled_with": "-stub flag",
+        "purpose": "Test data generation for rapid development iteration",
+        "implementation": "stub: blocks generate dummy outputs when invoked"
+      },
+      "parameter_management": {
+        "location": "nextflow.config",
+        "usage_pattern": "${params.parameter_name}",
+        "best_practices": [
+          "Define shared parameters centrally in config",
+          "Use descriptive parameter names",
+          "Document parameter purposes with comments"
+        ]
+      }
+    }
+  },
+  
+  "tools_integration": {
+    "nextflow_cli": {
+      "location": "bin/nextflow",
+      "common_commands": {
+        "run": "./bin/nextflow run main.nf [options]",
+        "lint": "./bin/nextflow lint <path.nf>",
+        "validate": "./bin/nextflow validate",
+        "stub_run": "./bin/nextflow run main.nf -stub"
+      }
+    },
+    "project_configuration": {
+      "files": [
+        {
+          "name": "documentation-config.json",
+          "purpose": "Project metadata and tool documentation URLs"
+        },
+        {
+          "name": "nextflow.config",
+          "purpose": "Parameters, container settings, process configurations"
+        },
+        {
+          "name": "opencode.json",
+          "purpose": "Language server configuration and file extensions"
+        },
+        {
+          "name": "AGENTS.md",
+          "purpose": "Development guidelines and best practices"
+        }
+      ]
+    }
+  },
+  
+  "error_handling": {
+    "syntax_errors": {
+      "detection_method": "Language server integration",
+      "resolution_steps": [
+        "Identify error location and message",
+        "Reference documentation for expected syntax",
+        "Apply corrective edit",
+        "Re-validate with language server"
+      ]
+    },
+    "common_issues": [
+      {
+        "issue": "Unexpected input at process/workflow start",
+        "cause": "Missing or extra comma in import statement or syntax error in body",
+        "resolution": "Check script section for missing braces, verify import syntax"
+      },
+      {
+        "issue": "Directive syntax mismatch",
+        "cause": "Using parentheses with directives that don't require them",
+        "resolution": "Remove unnecessary parentheses from storeDir, publishDir, tag directives"
+      },
+      {
+        "issue": "Section ordering non-compliance",
+        "cause": "Sections not in recommended order",
+        "resolution": "Reorder sections following standard: tag → storeDir/publishDir → input → output → script → stub → when"
+      }
+    ]
+  },
+  
+  "reference_documents": {
+    "internal": [
+      "AGENTS.md - Primary development guidelines",
+      "documentation-config.json - Tool documentation URLs",
+      "opencode.json - Language server configuration"
+    ],
+    "external": [
+      "Nextflow Official Documentation (https://www.nextflow.io/docs/latest/)",
+      "Immcantation Documentation (https://immcantation.readthedocs.io/)",
+      "MiXCR Documentation (https://mixr.github.io/docs/)",
+      "CellRanger Documentation (https://support.10xgenomics.com/)"
+    ]
+  },
+  
+  "skill_activation": {
+    "trigger_conditions": [
+      "Editing Nextflow files (.nf extension)",
+      "Modifying nextflow.config files",
+      "Creating new processes or workflows",
+      "Validating pipeline syntax",
+      "Reviewing module structure"
+    ],
+    "activation_context": "When user requests development, editing, or validation of Nextflow pipeline code"
+  }
+}

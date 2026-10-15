@@ -29,7 +29,7 @@ while read -r SRR; do
     if [ ! -f "$R1" ]; then R1="${SRR}_1.fastq.gz"; fi
     if [ ! -f "$R2" ]; then R2="${SRR}_2.fastq.gz"; fi
 
-    outdir="fastq_samples/${SRR}_sample"
+    outdir="fastq_samples/${SRR}"
     mkdir -p "$outdir"
 
     # Count reads and subsample using awk-based paired sampler

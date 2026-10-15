@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1600" font-family="Arial, sans-serif">
+  <defs>
+    <style>
+      .title-text { font-size: 24px; font-weight: bold; fill: #2c3e50; }
+      .section-title { font-size: 16px; font-weight: bold; fill: #34495e; }
+      .process-text { font-size: 12px; fill: #333; }
+      .flow-text { font-size: 10px; fill: #555; }
+      .arrow { fill: none; stroke: #2980b9; stroke-width: 2; }
+      .arrow-head { fill: #2980b9; }
+      .stub-marker { fill: #27ae60; }
+      .output-text { font-size: 9px; fill: #27ae60; }
+      .input-text { font-size: 9px; fill: #e74c3c; }
+      .connector { stroke: #95a5a6; stroke-width: 1.5; }
+      .container-box { fill: #ecf0f1; stroke: #3498db; stroke-width: 1.5; }
+      .channel-box { fill: #e8f6f3; stroke: #1abc9c; stroke-width: 1.5; }
+      .header-bg { fill: #3498db; }
+    </style>
+    
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" class="arrow-head"/>
+    </marker>
+    
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Title Section -->
+  <rect x="50" y="40" width="1700" height="100" class="header-bg" rx="8"/>
+  <text class="title-text" x="900" y="100" text-anchor="middle">VDJ Tool Evaluation Pipeline Architecture</text>
+  <text class="title-text" x="900" y="125" text-anchor="middle" font-size="14px">Entry Point: main.nf Workflow (Nextflow DSL2)</text>
+
+  <!-- Legend -->
+  <g transform="translate(50, 190)">
+    <rect x="0" y="0" width="600" height="100" fill="#f8f9fa" stroke="#dee2e6" rx="6"/>
+    <text x="25" y="25" class="section-title">Legend</text>
+    
+    <circle cx="60" cy="45" r="8" fill="#2980b9"/>
+    <text x="80" y="50" class="process-text">Process (Blue)</text>
+    
+    <circle cx="60" cy="70" r="8" fill="#27ae60"/>
+    <text x="80" y="75" class="process-text">Stub-Capable (Green)</text>
+    
+    <rect x="180" y="35" width="20" height="20" fill="#3498db" opacity="0.8"/>
+    <text x="210" y="50" class="process-text">Process Container</text>
+    
+    <rect x="180" y="60" width="20" height="20" fill="#1abc9c" opacity="0.8"/>
+    <text x="210" y="75" class="process-text">Data Channel</text>
+    
+    <line x1="360" y1="45" x2="400" y2="45" stroke="#27ae60" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <text x="410" y="50" class="process-text">Flow Arrow</text>
+    
+    <rect x="360" y="35" width="24" height="16" fill="#f39c12" stroke="#e67e22" stroke-width="1" rx="3"/>
+    <text x="388" y="50" class="process-text">Stub Marker</text>
+  </g>
+
+  <!-- Input Layer -->
+  <g transform="translate(50, 340)">
+    <text x="30" y="-10" class="section-title">INPUT LAYER</text>
+    
+    <!-- Input Files -->
+    <rect x="60" y="0" width="140" height="80" class="channel-box" filter="url(#shadow)"/>
+    <text x="130" y="25" text-anchor="middle" class="section-title">Input Files</text>
+    <text x="130" y="50" text-anchor="middle" class="flow-text">• FASTA sequences</text>
+    <text x="130" y="65" text-anchor="middle" class="flow-text">• Annotations CSV</text>
+    
+    <!-- Reference Data -->
+    <rect x="280" y="0" width="140" height="80" class="channel-box" filter="url(#shadow)"/>
+    <text x="350" y="25" text-anchor="middle" class="section-title">Reference Data</text>
+    <text x="350" y="50" text-anchor="middle" class="flow-text">• BCR_data.tsv</text>
+    <text x="350" y="65" text-anchor="middle" class="flow-text">• Sample configs</text>
+    
+    <!-- Parameters -->
+    <rect x="500" y="0" width="140" height="80" class="channel-box" filter="url(#shadow)"/>
+    <text x="570" y="25" text-anchor="middle" class="section-title">Parameters</text>
+    <text x="570" y="50" text-anchor="middle" class="flow-text">• subsample_reads</text>
+    <text x="570" y="65" text-anchor="middle" class="flow-text">• subsample_seed</text>
+    
+    <!-- Downward arrows -->
+    <line x1="130" y1="90" x2="130" y2="110" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="350" y1="90" x2="350" y2="110" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="570" y1="90" x2="570" y2="110" class="arrow" marker-end="url(#arrowhead)"/>
+  </g>
+
+  <!-- Main Workflow Box -->
+  <rect x="50" y="500" width="1700" height="400" fill="#fafbf0" stroke="#f1c40f" stroke-width="2" rx="10"/>
+  <text class="section-title" x="140" y="535">MAIN WORKFLOW</text>
+  <text class="flow-text" x="140" y="555">Chains: ch_input_fasta, ch_input_annotations, ch_reference, ch_fastqs, ch_cellranger_out, ch_pipeline_tsvs</text>
+  <text class="flow-text" x="140" y="575">Key: Input Data → SRA Download → CellRanger → Immcantation → MixCR → Compare Results</text>
+
+  <!-- Core Processes Row -->
+  <g transform="translate(120, 640)">
+    <!-- SRA Download -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="280" height="140" class="container-box" filter="url(#shadow)"/>
+      <rect x="0" y="0" width="20" height="20" class="stub-marker"/>
+      <text x="10" y="18" class="process-text" font-weight="bold">RUN_SRA_DOWNLOAD</text>
+      <text x="10" y="28" class="flow-text" fill="#27ae60">■ Stub Capable</text>
+      
+      <text x="20" y="70" class="input-text">
+        <!-- Input specification -->
+        <tspan x="20" dy="0">Inputs</tspan>
+        <tspan x="35" dy="20">• SRA samples</tspan>
+        <tspan x="35">• subsample_reads=1000</tspan>
+        <tspan x="35">• subsample_seed=42</tspan>
+      </text>
+      
+      <line x1="240" y1="45" x2="280" y2="45" class="arrow" marker-end="url(#arrowhead)"/>
+      
+      <text x="260" y="70" class="output-text">
+        <!-- Output specification -->
+        <tspan x="260" dy="0">Outputs</tspan>
+        <tspan x="290" dy="20">• FASTQ files</tspan>
+        <tspan x="290">• fastq_samples/</tspan>
+      </text>
+      
+      <rect x="10" y="95" width="260" height="35" fill="#ecf8f1" stroke="#1abc9c" stroke-width="1" rx="4"/>
+      <text x="20" y="115" class="flow-text" font-weight="bold">Container: paulpyl/sra-tools_bash:latest</text>
+    </g>
+    
+    <!-- Arrow to CellRanger -->
+    <line x1="330" y1="40" x2="360" y2="40" class="arrow" marker-end="url(#arrowhead)"/>
+    <text x="345" y="30" class="flow-text" text-anchor="middle">ch_fastqs</text>
+  </g>
+
+  <g transform="translate(470, 640)">
+    <!-- CellRanger -->
+    <g>
+      <rect x="0" y="0" width="300" height="160" class="container-box" filter="url(#shadow)"/>
+      <rect x="0" y="0" width="20" height="20" class="stub-marker"/>
+      <text x="10" y="18" class="process-text" font-weight="bold">RUN_CELLRANGER</text>
+      <text x="10" y="28" class="flow-text" fill="#27ae60">■ Stub Capable</text>
+      
+      <text x="20" y="75" class="input-text">
+        <tspan x="20" dy="0">Inputs</tspan>
+        <tspan x="35" dy="20">• FASTQ sample dirs</tspan>
+        <tspan x="35">• CellRanger v10.0</tspan>
+        <tspan x="35">• hg38 reference</tspan>
+      </text>
+      
+      <line x1="280" y1="80" x2="330" y2="80" class="arrow" marker-end="url(#arrowhead)"/>
+      
+      <text x="340" y="95" class="output-text">
+        <tspan x="340" dy="0">Outputs</tspan>
+        <tspan x="370" dy="20">• Cell counts matrix</tspan>
+        <tspan x="370">• Gene-cell matrices</tspan>
+        <tspan x="370">• UMI counts</tspan>
+      </text>
+      
+      <rect x="10" y="120" width="280" height="35" fill="#ecf8f1" stroke="#1abc9c" stroke-width="1" rx="4"/>
+      <text x="20" y="140" class="flow-text" font-weight="bold">Container: ubuntu:latest</text>
+    </g>
+    
+    <!-- Arrow to Immcantation -->
+    <line x1="380" y1="80" x2="410" y2="80" class="arrow" marker-end="url(#arrowhead)"/>
+    <text x="395" y="70" class="flow-text" text-anchor="middle">ch_cellranger_out</text>
+  </g>
+
+  <g transform="translate(850, 640)">
+    <!-- Immcantation -->
+    <g>
+      <rect x="0" y="0" width="300" height="160" class="container-box" filter="url(#shadow)"/>
+      <rect x="0" y="0" width="20" height="20" class="stub-marker"/>
+      <text x="10" y="18" class="process-text" font-weight="bold">RUN_IMMCANTATION</text>
+      <text x="10" y="28" class="flow-text" fill="#27ae60">■ Stub Capable</text>
+      
+      <text x="20" y="80" class="input-text">
+        <tspan x="20" dy="0">Inputs</tspan>
+        <tspan x="35" dy="25">• FASTA sequences</tspan>
+        <tspan x="35">• Species annotations</tspan>
+        <tspan x="35">• 10x Genomics pipeline</tspan>
+      </text>
+      
+      <line x1="280" y1="85" x2="330" y2="85" class="arrow" marker-end="url(#arrowhead)"/>
+      
+      <text x="340" y="100" class="output-text">
+        <tspan x="340" dy="0">Outputs</tspan>
+        <tspan x="370" dy="20">• immcantation.tsv</tspan>
+        <tspan x="370">• germ-pass.tsv</tspan>
+        <tspan x="370">• ChangeO database</tspan>
+      </text>
+      
+      <rect x="10" y="120" width="280" height="35" fill="#ecf8f1" stroke="#1abc9c" stroke-width="1" rx="4"/>
+      <text x="20" y="140" class="flow-text" font-weight="bold">Container: immcantation/suite:4.4.0</text>
+    </g>
+    
+    <!-- Arrow to Compare -->
+    <line x1="400" y1="85" x2="430" y2="85" class="arrow" marker-end="url(#arrowhead)"/>
+    <text x="415" y="75" class="flow-text" text-anchor="middle">ch_pipeline_tsvs</text>
+  </g>
+
+  <g transform="translate(1220, 640)">
+    <!-- MixCR -->
+    <g>
+      <rect x="0" y="0" width="280" height="160" class="container-box" filter="url(#shadow)"/>
+      <rect x="0" y="0" width="20" height="20" class="stub-marker"/>
+      <text x="10" y="18" class="process-text" font-weight="bold">RUN_MIXCR</text>
+      <text x="10" y="28" class="flow-text" fill="#27ae60">■ Stub Capable</text>
+      <text x="10" y="38" class="flow-text" font-size="10px" fill="#7f8c8d">(Parallel Processing)</text>
+      
+      <text x="20" y="80" class="input-text">
+        <tspan x="20" dy="0">Inputs</tspan>
+        <tspan x="35" dy="25">• FASTQ samples</tspan>
+        <tspan x="35">• Human (10x-sc-xcr-vdj)</tspan>
+        <tspan x="35">• miRNA_LICENSE</tspan>
+      </text>
+      
+      <line x1="280" y1="85" x2="310" y2="85" class="arrow" marker-end="url(#arrowhead)"/>
+      
+      <text x="320" y="100" class="output-text">
+        <tspan x="320" dy="0">Outputs</tspan>
+        <tspan x="350" dy="20">• align.vdjca</tspan>
+        <tspan x="350">• clones.clns</tspan>
+        <tspan x="350">• Single-cell data</tspan>
+      </text>
+      
+      <rect x="10" y="120" width="260" height="35" fill="#ecf8f1" stroke="#1abc9c" stroke-width="1" rx="4"/>
+      <text x="20" y="140" class="flow-text" font-weight="bold">Container: mixcr:4.7.0</text>
+    </g>
+  </g>
+
+  <!-- Downward connections from Main processes -->
+  <g transform="translate(60, 840)">
+    <!-- Connect SRA to MixCR -->
+    <line x1="250" y1="160" x2="360" y2="360" class="arrow" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+    <text x="300" y="340" class="flow-text" text-anchor="middle" fill="#95a5a6">parallel stream</text>
+    
+    <!-- Connect all outputs to comparison -->
+    <line x1="660" y1="80" x2="950" y2="360" class="arrow" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+    <line x1="1080" y1="80" x2="1250" y2="360" class="arrow" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+    <line x1="400" y1="360" x2="800" y2="360" class="arrow" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+  </g>
+
+  <!-- Results Layer -->
+  <rect x="50" y="1080" width="1700" height="420" fill="#fef9e7" stroke="#f39c12" stroke-width="2" rx="10"/>
+  <text class="section-title" x="140" y="1120">RESULTS LAYER</text>
+  <text class="flow-text" x="140" y="1145">Output: Results Directory Structure | Visualization &amp; Comparative Analysis</text>
+
+  <!-- Output Modules -->
+  <g transform="translate(120, 1160)">
+    <!-- CellRanger Results -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="360" height="260" fill="#ffffff" stroke="#3498db" stroke-width="1.5" rx="6"/>
+      <text x="30" y="25" class="section-title" font-weight="bold">CellRanger Results</text>
+      <text x="30" y="40" class="flow-text" fill="#2980b9">Directory: results/cellranger/cellranger_output/</text>
+      
+      <rect x="20" y="50" width="320" height="80" fill="#ebf5fb" stroke="#3498db" stroke-width="1" rx="4"/>
+      <text x="30" y="70" class="flow-text" font-weight="bold">• cellranger_output/</text>
+      <text x="50" y="90" class="flow-text">- raw_feature_count/</text>
+      <text x="50" y="105" class="flow-text">- filtered_count/</text>
+      <text x="50" y="120" class="flow-text">- web_summary/</text>
+      <text x="50" y="135" class="flow-text">• cellranger_version.txt</text>
+      
+      <text x="20" y="145" class="flow-text" font-weight="bold" fill="#e74c3c">Cell-level Analysis</text>
+      <text x="50" y="165" class="flow-text">- Cell counts</text>
+      <text x="50" y="180" class="flow-text">- Gene-cell matrices</text>
+      <text x="50" y="195" class="flow-text">- UMI quantification</text>
+    </g>
+    
+    <!-- Immcantation Results -->
+    <g transform="translate(400, 0)">
+      <rect x="0" y="0" width="360" height="260" fill="#ffffff" stroke="#3498db" stroke-width="1.5" rx="6"/>
+      <text x="30" y="25" class="section-title" font-weight="bold">Immcantation Results</text>
+      <text x="30" y="40" class="flow-text" fill="#2980b9">Directory: results/immcantation/</text>
+      
+      <rect x="20" y="50" width="320" height="80" fill="#ebf5fb" stroke="#3498db" stroke-width="1" rx="4"/>
+      <text x="30" y="70" class="flow-text" font-weight="bold">• immancation/10x-Analysis/</text>
+      <text x="50" y="90" class="flow-text">- BCR-Analysis/</text>
+      <text x="50" y="105" class="flow-text">- changeo_db/</text>
+      <text x="50" y="120" class="flow-text">• immcantation.tsv</text>
+      
+      <text x="20" y="145" class="flow-text" font-weight="bold" fill="#e74c3c">T/B Cell Analysis</text>
+      <text x="50" y="165" class="flow-text">- Germline assignments</text>
+      <text x="50" y="180" class="flow-text">- Clonotype identification</text>
+      <text x="50" y="195" class="flow-text">- Species-specific data</text>
+    </g>
+    
+    <!-- MixCR Results -->
+    <g transform="translate(800, 0)">
+      <rect x="0" y="0" width="360" height="260" fill="#ffffff" stroke="#3498db" stroke-width="1.5" rx="6"/>
+      <text x="30" y="25" class="section-title" font-weight="bold">MixCR Results</text>
+      <text x="30" y="40" class="flow-text" fill="#2980b9">Directory: results/mixcr/</text>
+      
+      <rect x="20" y="50" width="320" height="80" fill="#ebf5fb" stroke="#3498db" stroke-width="1" rx="4"/>
+      <text x="30" y="70" class="flow-text" font-weight="bold">• Alignment &amp; Clonotype Libraries</text>
+      <text x="50" y="90" class="flow-text">- align.vdjca</text>
+      <text x="50" y="105" class="flow-text">- clones.clns</text>
+      <text x="50" y="120" class="flow-text">• mixcr.per_cell.tsv (Single-cell)</text>
+      
+      <text x="20" y="145" class="flow-text" font-weight="bold" fill="#e74c3c">Clonotype Profiling</text>
+      <text x="50" y="165" class="flow-text">- Clonal expansion analysis</text>
+      <text x="50" y="180" class="flow-text">- VDJ rearrangement</text>
+      <text x="50" y="195" class="flow-text">- Report generation</text>
+    </g>
+  </g>
+
+  <!-- Comparison & Final Analysis -->
+  <g transform="translate(120, 1470)">
+    <rect x="0" y="0" width="1560" height="100" fill="#fffcf2" stroke="#e67e22" stroke-width="1.5" rx="6"/>
+    <text x="30" y="25" class="section-title" font-weight="bold">COMPARE_RESULTS - Final Analysis Platform</text>
+    <text x="30" y="45" class="flow-text">R/Quarto-based multi-tool comparison and visualization</text>
+    <text x="30" y="70" class="flow-text" font-weight="bold" fill="#e67e22">Runtim</text>
+    <text x="50" y="95" class="flow-text">Input: ch_pipeline_tsvs + ch_reference</text>
+  </g>
+
+  <!-- Output Artifacts -->
+  <rect x="120" y="1580" width="1560" height="15" fill="#fff9e6" stroke="#f1c40f" stroke-width="1" rx="3"/>
+  <text x="800" y="1595" text-anchor="middle" class="flow-text" font-size="11px" fill="#e74c3c"></text>
+  <text x="800" y="1595" text-anchor="middle" class="flow-text" font-weight="bold" fill="#e67e22">Output Artifacts</text>
+  <text x="800" y="1610" text-anchor="middle" class="flow-text" font-size="10px">
+    • comparison_summary.csv • comparison_report.html • quality_metrics.png •lima_test.txt
+  </text>
+
+  <!-- Environment & Configuration Footer -->
+  <rect x="50" y="1630" width="1700" height="120" fill="#f0f4f8" stroke="#95a5a6" stroke-width="1" rx="6"/>
+  <text x="140" y="1655" class="section-title">ENVIRONMENT CONFIGURATION</text>
+  
+  <g transform="translate(120, 1670)">
+    <!-- Container Stack -->
+    <text x="0" y="0" class="flow-text" font-weight="bold">Containers: immcantation/suite:4.4,80px</text>
+    <text x="0" y="20" class="flow-text">- mixcr:4.7.0 | rocker/tidyverse:latest | paulpyl/sra-tools:latest | ubuntu:latest</text>
+    
+    <!-- Platform Specs -->
+    <text x="400" y="0" class="flow-text" font-weight="bold">Platform: Linux/amd64 | Nextflow DSL2 | Apptainer Support</text>
+    <text x="400" y="20" class="flow-text" font-size="11px">Nextflow Version: v25.10.4+ | Container Options: --platform linux/amd64</text>
+    
+    <!-- Configuration Files -->
+    <text x="900" y="0" class="flow-text" font-weight="bold">Configuration Files:</text>
+    <text x="900" y="20" class="flow-text" font-size="11px">main.nf | nextflow.config | documentation-config.json</text>
+    
+    <!-- Directives Pattern -->
+    <text x="0" y="45" class="flow-text" font-weight="bold">Process Directives Pattern:</text>
+    <rect x="0" y="65" width="400" height="35" fill="#e8f6f3" stroke="#1abc9c" rx="4"/>
+    <text x="20" y="88" class="flow-text">tag → storeDir/publishDir → input → output → script → stub → when</text>
+  </g>
+
+  <!-- Stub Capable Badge -->
+  <g transform="translate(1600, 60)">
+    <rect x="0" y="0" width="180" height="180" fill="#27ae60" rx="12" opacity="0.9"/>
+    <text x="90" y="50" text-anchor="middle" class="title-text" fill="#fff" font-size="18px" font-weight="bold">STUB</text>
+    <text x="90" y="75" text-anchor="middle" class="title-text" fill="#fff" font-size="20px">MODE</text>
+    <text x="90" y="130" text-anchor="middle" class="flow-text" fill="#fff" font-size="12px">-stub | -stub-run</text>
+    
+    <!-- Checkmark -->
+    <circle cx="90" cy="160" r="20" fill="#fff"/>
+    <path d="M82 160 L88 168 L102 152" stroke="#27ae60" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
+  </g>
+</svg>

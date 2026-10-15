@@ -67,7 +67,34 @@ This pipeline evaluates three VDJ (Variable, Diversity, Joining) tools: Immcanta
 
 ## Container Specifications
 - Immcantation: immcantation/suite:4.4.0
-- MixCR: ghcr.io/milaboratory/mixcr/mixcr:4.7.0
-- CellRanger: ubuntu:22.04
+- MixCR: ghcr.io/milaboratory/mixcr/mixcr:4.7.0 (License: REDACTED-use-nextflow-secret-MI_LICENSE)
+- CellRanger: ubuntu:latest (Version: 10.0.0, Path: /opt/cellranger-10.0.0)
 - SRA Download: paulpyl/sra-tools_bash:latest
 - Comparison: rocker/tidyverse:latest
+
+## Documentation Resources
+
+### Immcantation
+- **Docs**: https://immcantation.readthedocs.io/
+- **GitHub**: https://github.com/immcantation/immcantation
+- **Install Guide**: https://immcantation.readthedocs.io/en/latest/install.html
+- **API Reference**: https://immcantation.readthedocs.io/en/latest/api.html
+- **Tutorials**: https://immcantation.readthedocs.io/en/latest/notebooks/tutorials.html
+
+### MixCR
+- **Docs**: https://mixr.github.io/docs/
+- **GitHub**: https://github.com/milaboratory/mixcr
+- **Docker**: https://hub.docker.com/r/milaboratory/mixcr
+- **User Guide**: https://mixr.github.io/docs/v4/users_guide/mixr/
+- **Releases**: https://github.com/milaboratory/mixcr/releases
+
+### CellRanger
+- **Overview**: https://support.10xgenomics.com/single-cell-gene-expression/software/overview
+- **Pipeline Guide**: https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/what-is-cell-ranger
+- **Installation**: https://support.10xgenomics.com/single-cell-gene-expression/software/installation-and-system-requirements
+- **Changelog**: https://support.10xgenomics.com/software/changelog
+
+### Nextflow
+- **Main Docs**: https://www.nextflow.io/docs/latest/
+- **Get Started**: https://www.nextflow.io/docs/latest/get-started.html
+- **Workflow Guide**: https://www.nextflow.io/docs/latest/workflow.html

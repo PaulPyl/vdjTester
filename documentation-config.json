@@ -1,0 +1,96 @@
+{
+  "project": "VDJ Tool Evaluation Pipeline",
+  "documentation": {
+    "immcantation": {
+      "name": "Immcantation",
+      "version": "4.4.0",
+      "container": "immcantation/suite:4.4.0",
+      "documentationUrl": "https://immcantation.readthedocs.io/",
+      "githubUrl": "https://github.com/immcantation/immcantation",
+      "docs": {
+        "install": "https://immcantation.readthedocs.io/en/latest/install.html",
+        "apiReference": "https://immcantation.readthedocs.io/en/latest/api.html",
+        "tutorials": "https://immcantation.readthedocs.io/en/latest/notebooks/tutorials.html",
+        "examples": "https://immcantation.readthedocs.io/en/latest/notebooks/examples.html"
+      },
+      "keyFeatures": [
+        "10x Genomics pipeline integration",
+        "ChangeO analysis tools",
+        "Immcantation visualization",
+        "Human and mouse repertoire analysis"
+      ]
+    },
+    "mixcr": {
+      "name": "MiXCR",
+      "version": "4.7.0",
+      "container": "ghcr.io/milaboratory/mixcr/mixcr:4.7.0",
+      "documentationUrl": "https://mixr.github.io/docs/",
+      "githubUrl": "https://github.com/milaboratory/mixcr",
+      "dockerHubUrl": "https://hub.docker.com/r/milaboratory/mixcr",
+      "docs": {
+        "userGuide": "https://mixr.github.io/docs/v4/users_guide/mixr/",
+        "apiDocumentation": "https://mixr.github.io/docs/v4/api/mixr/",
+        "tutorials": "https://mixr.github.io/docs/v4/tools/",
+        "releases": "https://github.com/milaboratory/mixcr/releases"
+      },
+      "keyFeatures": [
+        "Clonotype analysis",
+        "TCR/BCR sequencing analysis",
+        "Single-cell analysis",
+        "License-based activation (REDACTED-use-nextflow-secret-MI_LICENSE)"
+      ]
+    },
+    "cellranger": {
+      "name": "CellRanger",
+      "version": "10.0.0",
+      "container": "ubuntu:latest",
+      "containerPath": "/opt/cellranger-10.0.0",
+      "documentationUrl": "https://support.10xgenomics.com/single-cell-gene-expression/software/overview",
+      "docsUrl": "https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/what-is-cell-ranger",
+      "githubUrl": "https://support.10xgenomics.com",
+      "docs": {
+        "overview": "https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/what-is-cell-ranger",
+        "installGuide": "https://support.10xgenomics.com/single-cell-gene-expression/software/installation-and-system-requirements",
+        "pipelineGuide": "https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/what-is-cell-ranger-count",
+        "changelog": "https://support.10xgenomics.com/software/changelog"
+      },
+      "keyFeatures": [
+        "10x Genomics data analysis",
+        "Single-cell gene expression profiling",
+        "Cell hashing feature",
+        "Integrated pipeline for raw FASTQ analysis"
+      ]
+    },
+    "nextflow": {
+      "name": "Nextflow",
+      "version": "latest",
+      "container": "nextflow/nextflow:latest",
+      "documentationUrl": "https://www.nextflow.io/docs/latest/",
+      "docs": {
+        "getStarted": "https://www.nextflow.io/docs/latest/get-started.html",
+        "workflowGuide": "https://www.nextflow.io/docs/latest/workflow.html",
+        "dsl2Features": "https://www.nextflow.io/docs/latest/dsl2-features.html",
+        "executors": "https://www.nextflow.io/docs/latest/nextflow-executor.html"
+      },
+      "keyFeatures": [
+        "Workflow orchestration",
+        "Docker/Apptainer container support",
+        "Scalable pipeline execution",
+        "Cross-platform compatibility (macOS, Linux)"
+      ]
+    }
+  },
+  "environmentSettings": {
+    "apptainer": {
+      "enabled": true,
+      "cachePath": "/Users/paul/.apptainer/cache",
+      "platform": "linux/amd64"
+    },
+    "platform": "macOS",
+    "packageManagers": {
+      "nix": true,
+      "apptainer": true,
+      "docker": true
+    }
+  }
+}
