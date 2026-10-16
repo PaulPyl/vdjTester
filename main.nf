@@ -52,15 +52,19 @@ workflow {
         .mix(CELLRANGER_MULTI.out.vdj_t.map { sample, dir -> tuple(sample, 'vdj_t', dir) })
     IMMCANTATION(ch_cr_vdj)
 
-    def vdj_libraries = params.libraries.findAll { lib -> lib.feature_types.startsWith('VDJ') }
-    ch_mixcr_input = ch_cr_input.flatMap { sample, fastqs, _gex_ref, _vdj_ref ->
-        vdj_libraries.collect { lib -> tuple(sample, lib.fastq_id, fastqs, lib.subdir) }
+    ch_mixcr_calls = channel.empty()
+    if (!params.skip_mixcr) {
+        def vdj_libraries = params.libraries.findAll { lib -> lib.feature_types.startsWith('VDJ') }
+        ch_mixcr_input = ch_cr_input.flatMap { sample, fastqs, _gex_ref, _vdj_ref ->
+            vdj_libraries.collect { lib -> tuple(sample, lib.fastq_id, fastqs, lib.subdir) }
+        }
+        MIXCR(ch_mixcr_input)
+        ch_mixcr_calls = MIXCR.out.calls
     }
-    MIXCR(ch_mixcr_input)
 
     // --- Comparison and expression check ---------------------------------------------
     ch_calls = CELLRANGER_MULTI.out.calls.flatten()
-        .mix(IMMCANTATION.out.calls, MIXCR.out.calls)
+        .mix(IMMCANTATION.out.calls, ch_mixcr_calls)
         .collect()
     COMPARE_VDJ(params.sample_id, ch_calls)
 
