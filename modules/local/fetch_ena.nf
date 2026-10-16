@@ -4,9 +4,10 @@
 // ENA serves SRA's regenerated _1/_2 files without index reads, and the order is
 // not guaranteed (in GSE266035 `_1` holds the cDNA read). Read length does not
 // tell them apart either: VDJ and GEX libraries are often sequenced 150 x 150.
-// In 10x 5' chemistry read 1 is barcode (16) + UMI (10) + template-switch oligo,
-// so the read with TTTCTTATATGGG at position 27 is R1 (~60 % of reads in
-// GSE311112 vs 0 % in the other file).
+// In 10x 5' chemistry read 1 is barcode (16) + UMI (10) + template-switch oligo
+// (TTTCTTATATGGG from position 27). The exact oligo is often degraded (cll_5
+// timepoint 3 BCR: 7 % exact matches), so the test looks for its core TCTTATAT in
+// bases 23-42: 43-70 % of read 1 vs <= 0.1 % of read 2 across GSE311112 runs.
 //
 // File URLs and MD5s come from the ENA portal API. When the API is down (it
 // returned HTTP 500 and timeouts on 2026-10-16), the URL is built from ENA's
@@ -33,9 +34,9 @@ process FETCH_ENA {
         return 1
     }
     md5_of() { if command -v md5sum >/dev/null; then md5sum "\$1" | cut -d' ' -f1; else md5 -q "\$1"; fi; }
-    tso_pct() {  # % of the first 2000 reads with the 5' TSO right after barcode + UMI
+    tso_pct() {  # % of the first 2000 reads with the TSO core just after barcode + UMI
         set +o pipefail
-        gzip -dc "\$1" | head -n 8000 | awk 'NR % 4 == 2 { n++; if (substr(\$0, 27, 13) == "TTTCTTATATGGG") t++ } END { print int(100 * t / n) }'
+        gzip -dc "\$1" | head -n 8000 | awk 'NR % 4 == 2 { n++; if (index(substr(\$0, 23, 20), "TCTTATAT")) t++ } END { print int(100 * t / n) }'
     }
     ena_dir() {  # ENA's layout: vol1/fastq/<first 6>/<00x|0xx|xxx>/<acc>
         acc=\$1; digits=\${acc#???}; n=\${#digits}
@@ -89,10 +90,10 @@ process FETCH_ENA {
         elif [ "\$tso2" -ge 20 ] && [ "\$tso1" -lt 5 ]; then
             r1=\$run.2.fastq.gz; r2=\$run.1.fastq.gz
         else
-            echo "\$run: cannot tell R1 from R2 (TSO at position 27: \$tso1 % / \$tso2 %)" >&2
+            echo "\$run: cannot tell R1 from R2 (TSO core in bases 23-42: \$tso1 % / \$tso2 %)" >&2
             exit 1
         fi
-        echo "\$run (lane \$lane): TSO at position 27 in \$tso1 % / \$tso2 % of reads, R1 = \$r1" >> "\$out/fetch.log"
+        echo "\$run (lane \$lane): TSO core in bases 23-42 of \$tso1 % / \$tso2 % of reads, R1 = \$r1" >> "\$out/fetch.log"
         mv "\$r1" "\$out/${fastq_id}_S1_L00\${lane}_R1_001.fastq.gz"
         mv "\$r2" "\$out/${fastq_id}_S1_L00\${lane}_R2_001.fastq.gz"
     done
