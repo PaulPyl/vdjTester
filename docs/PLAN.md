@@ -349,7 +349,21 @@ For v0.2:
 - **Python container** now from Wave with scikit-image, so Scrublet uses its
   automatic threshold.
 
-### Plan: HTML report (step 7)
+### HTML report (done 2026-10-16)
+
+`results/vdjtester_report.html`: one self-contained file of about 3 MB, rendered
+by the `REPORT` step from the per-sample and per-patient tables. Built as planned
+below, with two deviations:
+- **No runtime section:** Nextflow's trace is only complete after the run ends.
+- **No Jupyter kernel.** Under Rosetta, Quarto's Jupyter kernel never answered its
+  client, over TCP or IPC. So the report is converted to a notebook, executed in
+  one IPython shell (`bin/run_notebook.py`, which keeps outputs in order), and
+  Quarto only renders the result.
+- The conda-forge quarto needs its activation script sourced inside the container.
+- Develop the report against `results_report_dev/` (prefixed copies of a run's
+  tables) with `VDJTESTER_REPORT_DATA=<dir>`.
+
+### Original plan: HTML report (step 7)
 
 **Form.** A `REPORT` process runs once per pipeline run, after `CLONE_TRACKING`. It
 renders `assets/report/vdjtester_report.qmd` with Quarto (Python/Jupyter engine) to
