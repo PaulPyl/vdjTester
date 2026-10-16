@@ -95,7 +95,16 @@ workflow {
     ch_samples = ch_lib_items
         .map { sid, lib, dir -> tuple(groupKey(sid, libs_per_sample[sid]), lib, dir) }
         .groupTuple()
-        .map { key, libs, dirs -> tuple(key.toString(), libs, dirs) }
+        .map { key, libs, dirs ->
+            // Fixed library order (VDJ first, then GEX; by name), so the Cell Ranger
+            // config, and so -resume, do not depend on which download finished first.
+            def sorted = [libs, dirs].transpose().sort { pair ->
+                [pair[0].feature_types.startsWith('VDJ') ? 0 : 1, pair[0].fastq_id]
+            }
+            // ArrayBag, as groupTuple returns: -resume hashes bags order-independently,
+            // so tasks from runs before this sorting still match.
+            tuple(key.toString(), new nextflow.util.ArrayBag(sorted.collect { pair -> pair[0] }), new nextflow.util.ArrayBag(sorted.collect { pair -> pair[1] }))
+        }
         .combine(ch_refs)
     CELLRANGER_MULTI(ch_samples)
 
