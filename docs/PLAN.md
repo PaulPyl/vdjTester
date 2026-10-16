@@ -259,6 +259,38 @@ For v0.2:
   - TRBC2 counts appear in about 64 % of B cells, which confirms TR constant genes
     must stay out of the call.
 
+### First complete run, all three tools, on the Mac (2026-10-16)
+
+- `-profile mac`, 1k B cells, every step succeeded. Task times:
+  - Cell Ranger multi 19 min 44 s (Dardel: 17 min, plus about 30 min queueing)
+  - MiXCR 5 min 37 s (native)
+  - Immcantation 2 min
+  - Comparison and expression check: seconds
+- **Cells with a BCR:** Cell Ranger 1,107, Immcantation 1,107, MiXCR 1,102. MiXCR
+  reports 40 cells with more than one productive IGH, against 18 for the others.
+- **MiXCR vs Cell Ranger:** CDR3 99 %, J 97–99 %, V 79 % (IGH), 77 % (IGK), 92 % (IGL).
+  - Most V disagreements are duplicated or near-identical genes: IGKV3-15 vs 3D-15,
+    IGKV1-8 vs 1D-8, IGHV3-33 vs 3-30-3, IGHV1-69D vs 1-69.
+  - Some are not: IGHV4-34 vs 4-4 (31 cells) and IGKV3-20 vs 3D-7 (27).
+  - **Next:** a paralog-aware V agreement measure (collapse D-duplicates and
+    identical genes) to separate naming noise from real disagreement.
+- **Expression (UCell, maxRank 1,846):** 1,144 B, 4 neither, 0 T or hybrids. BCR found
+  in 96.6 % of B cells (Cell Ranger, Immcantation) and 95.4 % (MiXCR).
+
+### Next dataset: longitudinal CLL (GSE311112, see docs/datasets_clonal.md)
+
+- Ibrutinib-sensitive patients (IBS): diagnosis, 3 years and 5 years.
+- Ibrutinib-resistant patients (IBR): diagnosis, BTK C481S detection, relapse.
+- 12 patients, 5′ GEX + BCR + TCR. Start with `cll_1` (IBS, 3 timepoints, 36 GB).
+- **Pipeline work needed:**
+  - a samplesheet (patient × timepoint)
+  - an ENA download step that renames files to Cell Ranger's naming
+  - Cell Ranger multi with GEX + VDJ-B + VDJ-T
+  - a `CLONE_TRACKING` step: per-tool clone frequencies over time, overlap
+    between timepoints, and agreement between tools on the dominant clone
+- **Storage:** the project moves to the external SanDisk Extreme Pro SSD, because the
+  Mac's internal disk is 97 % full.
+
 ## 6. Known bugs in the uncommitted rewrite (why it's a snapshot, not a base)
 
 - `main.nf` uses names it never includes (`DOWNLOAD_CELLRANGER_DATA`, `RUN_CELLRANGER`,
