@@ -36,9 +36,11 @@ workflow {
 
     FETCH_TAR(ch_inputs.fetch.map { row -> tuple(row[0], row[2], row[3]) })
 
-    ch_cr_input = ch_inputs.given
+    ch_resolved = ch_inputs.given
         .map { row -> tuple(row[0], file(row[1], checkIfExists: true)) }
         .mix(FETCH_TAR.out)
+
+    ch_cr_input = ch_resolved
         .collect(flat: false)
         .map { pairs ->
             def by_key = pairs.collectEntries { pair -> [(pair[0]): pair[1]] }
@@ -55,9 +57,12 @@ workflow {
     ch_mixcr_calls = channel.empty()
     if (!params.skip_mixcr) {
         def vdj_libraries = params.libraries.findAll { lib -> lib.feature_types.startsWith('VDJ') }
-        ch_mixcr_input = ch_cr_input.flatMap { sample, fastqs, _gex_ref, _vdj_ref ->
-            vdj_libraries.collect { lib -> tuple(sample, lib.fastq_id, fastqs, lib.subdir) }
-        }
+        // MiXCR needs only the reads, so it starts without waiting for the references.
+        ch_mixcr_input = ch_resolved
+            .filter { key, _path -> key == 'fastqs' }
+            .flatMap { _key, fastqs ->
+                vdj_libraries.collect { lib -> tuple(params.sample_id, lib.fastq_id, fastqs, lib.subdir) }
+            }
         MIXCR(ch_mixcr_input)
         ch_mixcr_calls = MIXCR.out.calls
     }

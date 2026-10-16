@@ -31,6 +31,8 @@ process CELLRANGER_MULTI {
     def printf_args = config_lines.collect { line -> "'${line}'" }.join(' ')
     """
     ${cr_path}
+    # Cell Ranger writes telemetry under \$HOME; containers may give it an unwritable one.
+    [ -w "\${HOME:-/nonexistent}" ] || export HOME=\$PWD
     cellranger --version > versions.txt
 
     printf '%s\\n' ${printf_args} \\

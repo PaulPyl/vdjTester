@@ -23,3 +23,4 @@ container_cache/
 .nextflow_home/
 run_*.log
 results_stub/
+tools/
