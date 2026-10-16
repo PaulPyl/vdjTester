@@ -16,6 +16,7 @@ the normal case for the T score there.
 """
 
 import argparse
+import importlib.util
 from pathlib import Path
 
 import matplotlib
@@ -76,12 +77,12 @@ def main():
         adata.obs["pct_counts_mt"] <= args.max_pct_mt
     )
 
-    # Scrublet on raw counts. Its automatic threshold needs scikit-image; fall back
-    # to a fixed one if that is missing, and record which was used.
-    try:
+    # Scrublet on raw counts. Its automatic threshold needs scikit-image (scanpy
+    # raises ValueError without it); fall back to a fixed one and record which.
+    if importlib.util.find_spec("skimage"):
         sc.pp.scrublet(adata)
         doublet_threshold = "auto"
-    except ImportError:
+    else:
         sc.pp.scrublet(adata, threshold=0.25)
         doublet_threshold = "0.25 (fixed: scikit-image missing)"
 
