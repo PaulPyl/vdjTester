@@ -139,7 +139,9 @@ workflow {
     if (!params.skip_trust4) {
         TRUST4(
             ch_lib_items
-                .filter { _sid, lib, _dir -> lib.feature_types.startsWith('VDJ') }
+                .filter { _sid, lib, _dir ->
+                    lib.feature_types.startsWith('VDJ') || (params.trust4_gex && lib.feature_types == 'Gene Expression')
+                }
                 .map { sid, lib, dir -> tuple(sid, lib.fastq_id, dir) }
                 .combine(FETCH_FILES.out)
         )
@@ -150,16 +152,23 @@ workflow {
     // Per VDJ library: one call file each from Cell Ranger, Immcantation, and MiXCR
     // and TRUST4 unless skipped.
     def calls_per_vdj = 2 + (params.skip_mixcr ? 0 : 1) + (params.skip_trust4 ? 0 : 1)
+    def gex_per_sample = params.samplesheet
+        ? file(params.samplesheet).splitCsv(header: true).findAll { row -> row.feature_types == 'Gene Expression' }.countBy { row -> row.sample_id }
+        : [(params.sample_id): params.libraries.count { lib -> lib.feature_types == 'Gene Expression' }]
+    def gex_calls = !params.skip_trust4 && params.trust4_gex
+    def gex_ids = params.samplesheet
+        ? file(params.samplesheet).splitCsv(header: true).findAll { row -> row.feature_types == 'Gene Expression' }.collect { row -> row.fastq_id }
+        : params.libraries.findAll { lib -> lib.feature_types == 'Gene Expression' }.collect { lib -> lib.fastq_id }
     ch_calls = CELLRANGER_MULTI.out.calls
         .transpose()
         .mix(IMMCANTATION.out.calls, ch_mixcr_calls, ch_trust4_calls)
-        .map { sid, f -> tuple(groupKey(sid, vdj_per_sample[sid] * calls_per_vdj), f) }
+        .map { sid, f -> tuple(groupKey(sid, vdj_per_sample[sid] * calls_per_vdj + (gex_calls ? (gex_per_sample[sid] ?: 0) : 0)), f) }
         .groupTuple()
         .map { key, files -> tuple(key.toString(), files) }
     // The GEX matrix gives the cell barcodes TRUST4 calls are restricted to; the VDJ
     // reference gives germline V sequences for paralog-aware agreement.
     COMPARE_VDJ(
-        ch_calls.join(CELLRANGER_MULTI.out.filtered_h5),
+        ch_calls.join(CELLRANGER_MULTI.out.filtered_h5).map { sid, calls, h5 -> tuple(sid, calls, h5, gex_ids) },
         ch_refs.map { _gex, vdj -> vdj },
         FETCH_FILES.out.first(),   // value channel: reused by every sample
     )

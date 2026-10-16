@@ -8,7 +8,14 @@ Input files are recognised by their name, `<tool>.<sample>.<library>.<ext>`:
   trust4.*.tsv         TRUST4 <prefix>_barcode_airr.tsv (AIRR, one row per chain)
 
 TRUST4 has no cell calling, so with --gex-h5 its barcodes are restricted to the
-cells in Cell Ranger's filtered GEX matrix.
+cells in Cell Ranger's filtered GEX matrix. It also reports ambient chains: on
+cll_1 (timepoint 3) TCR chains in Cell Ranger's B cells had a median of 1 UMI
+(99 % <= 2) against 25 for real BCR chains. A TRUST4 chain is therefore kept only
+with >= --trust4-min-umis UMIs and >= --trust4-min-frac of the strongest chain in
+its barcode (across BCR and TCR libraries). That took agreement with Cell
+Ranger's cell classes from 38 % to 99 %. TRUST4 run on a GEX library (no VDJ
+enrichment, --gex-libraries) is reported as tool `trust4_gex`, with its own UMI
+minimum (--trust4-gex-min-umis).
 
 Every tool is reduced to the same columns, keeping productive chains only:
   tool, cell_id, locus, v_gene, j_gene, c_gene, cdr3_core, umis
@@ -297,20 +304,36 @@ class VComparer:
         return "different"
 
 
-def load(paths, cells=None):
+def filter_trust4(df, min_umis, min_frac):
+    """Drop ambient chains: too few UMIs, or weak relative to the barcode's best."""
+    umis = pd.to_numeric(df["umis"], errors="coerce").fillna(0)
+    best = umis.groupby(df["cell_id"]).transform("max")
+    return df[(umis >= min_umis) & (umis >= min_frac * best)]
+
+
+def load(paths, cells=None, gex_libraries=(), trust4_min_umis=3, trust4_min_frac=0.1, trust4_gex_min_umis=1):
     frames = []
     for path in paths:
-        tool = Path(path).name.split(".")[0]
+        parts = Path(path).name.split(".")
+        tool = parts[0]
         if tool not in READERS:
             raise SystemExit(f"Don't know which tool produced {path}")
         if Path(path).stat().st_size == 0:
             continue
         df = READERS[tool](path)
-        if tool == "trust4" and cells is not None:
+        if tool == "trust4" and len(parts) > 2 and parts[2] in gex_libraries:
+            tool = "trust4_gex"
+        if tool.startswith("trust4") and cells is not None:
             df = df[df["cell_id"].isin(cells)]
         df.insert(0, "tool", tool)
         frames.append(df)
     calls = pd.concat(frames, ignore_index=True)
+    # TRUST4 filters work per barcode across its BCR and TCR files, so apply after concat.
+    for tool, min_umis in [("trust4", trust4_min_umis), ("trust4_gex", trust4_gex_min_umis)]:
+        sel = calls["tool"] == tool
+        if sel.any():
+            kept = filter_trust4(calls[sel], min_umis, trust4_min_frac)
+            calls = pd.concat([calls[~sel], kept], ignore_index=True)
     # Tools without tied calls: the set is just the single call. MiXCR's hit list
     # is ranked by score rather than tied, so it also uses its top hit only.
     for f in ["v", "j"]:
@@ -426,6 +449,10 @@ def main():
     parser.add_argument("--vdj-ref", help="Cell Ranger VDJ reference dir, for germline V identity")
     parser.add_argument("--germline-fasta", help="IMGT-style V germlines, e.g. TRUST4's human_IMGT+C.fa")
     parser.add_argument("--germline-identity", type=float, default=0.97)
+    parser.add_argument("--gex-libraries", default="", help="comma-separated fastq_ids of GEX libraries")
+    parser.add_argument("--trust4-min-umis", type=int, default=3)
+    parser.add_argument("--trust4-min-frac", type=float, default=0.1)
+    parser.add_argument("--trust4-gex-min-umis", type=int, default=1)
     parser.add_argument("--outdir", default=".")
     args = parser.parse_args()
     out = Path(args.outdir)
@@ -433,7 +460,8 @@ def main():
     cells = gex_barcodes(args.gex_h5) if args.gex_h5 else None
     have_germlines = args.vdj_ref or args.germline_fasta
     vcmp = VComparer(load_v_germlines(args.vdj_ref, args.germline_fasta), args.germline_identity) if have_germlines else None
-    calls = load(args.calls, cells)
+    calls = load(args.calls, cells, set(filter(None, args.gex_libraries.split(","))),
+                 args.trust4_min_umis, args.trust4_min_frac, args.trust4_gex_min_umis)
     classes = cell_classes(calls)
     calls.to_csv(out / "vdj_calls_long.tsv", sep="\t", index=False)
     classes.to_csv(out / "vdj_cell_classes.tsv", sep="\t", index=False)

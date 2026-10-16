@@ -5,7 +5,7 @@ process COMPARE_VDJ {
     publishDir path: { "${params.outdir}/compare/${sample_id}" }, mode: 'copy'
 
     input:
-    tuple val(sample_id), path(calls), path(filtered_h5)
+    tuple val(sample_id), path(calls), path(filtered_h5), val(gex_libraries)
     path vdj_ref
     path germline_ref
 
@@ -19,7 +19,11 @@ process COMPARE_VDJ {
     script:
     """
     vdj_compare.py --gex-h5 ${filtered_h5} --vdj-ref ${vdj_ref} \\
-        --germline-fasta ${germline_ref}/human_IMGT+C.fa --outdir . ${calls}
+        --germline-fasta ${germline_ref}/human_IMGT+C.fa \\
+        --gex-libraries '${gex_libraries.join(',')}' \\
+        --trust4-min-umis ${params.trust4_min_umis} --trust4-min-frac ${params.trust4_min_frac} \\
+        --trust4-gex-min-umis ${params.trust4_gex_min_umis} \\
+        --outdir . ${calls}
     """
 
     stub:
