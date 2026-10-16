@@ -31,10 +31,13 @@ process FETCH_ENA {
     script:
     """
     fetch() {  # url, output file; resumes after dropped connections
-        for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            curl -fsSL --retry 5 --retry-all-errors -C - -o "\$2" "\$1" && return 0
+        # No curl --retry here: after an HTTP 500 mid-download, curl's own retry
+        # resumed from a stale offset and the file failed its MD5 (SRR36170693,
+        # 2026-10-16). A fresh curl per attempt takes the offset from the file size.
+        for attempt in \$(seq 1 30); do
+            curl -fsSL -C - -o "\$2" "\$1" && return 0
             echo "download of \$2 interrupted (attempt \$attempt), resuming" >&2
-            sleep 15
+            sleep 30
         done
         return 1
     }
@@ -83,7 +86,10 @@ process FETCH_ENA {
                 continue
             fi
             fetch "https://\$url" "\$f"
-            if [ -n "\$expected" ]; then
+            if [ -n "\$expected" ] && [ "\$(md5_of "\$f")" != "\$expected" ]; then
+                echo "\$run file \$i: md5 mismatch, downloading it again from the start" >> "\$out/fetch.log"
+                rm -f "\$f"
+                fetch "https://\$url" "\$f"
                 actual=\$(md5_of "\$f")
                 if [ "\$actual" != "\$expected" ]; then
                     echo "md5 mismatch for \$run file \$i: \$actual vs \$expected" >&2
