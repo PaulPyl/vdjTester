@@ -15,7 +15,7 @@ process CELLRANGER_MULTI {
     output:
     tuple val(sample_id), path('per_sample_outs/vdj_b'), emit: vdj_b, optional: true
     tuple val(sample_id), path('per_sample_outs/vdj_t'), emit: vdj_t, optional: true
-    tuple val(sample_id), path('per_sample_outs/count/sample_filtered_feature_bc_matrix.h5'), emit: filtered_h5
+    tuple val(sample_id), path('per_sample_outs/sample_filtered_feature_bc_matrix.h5'), emit: filtered_h5
     path "cellranger.${sample_id}.*.csv", emit: calls
     path 'per_sample_outs/{web_summary.html,metrics_summary.csv}', emit: summary
     path 'multi_config.csv'
@@ -65,8 +65,8 @@ process CELLRANGER_MULTI {
     """
     echo "cellranger stub" > versions.txt
     touch multi_config.csv
-    mkdir -p per_sample_outs/count
-    touch per_sample_outs/count/sample_filtered_feature_bc_matrix.h5 per_sample_outs/web_summary.html per_sample_outs/metrics_summary.csv
+    mkdir -p per_sample_outs
+    touch per_sample_outs/sample_filtered_feature_bc_matrix.h5 per_sample_outs/web_summary.html per_sample_outs/metrics_summary.csv
     for chain in ${chains}; do
         mkdir -p per_sample_outs/\$chain
         touch per_sample_outs/\$chain/filtered_contig.fasta per_sample_outs/\$chain/filtered_contig_annotations.csv
