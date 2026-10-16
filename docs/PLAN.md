@@ -202,18 +202,62 @@ For v0.2:
 
 1. ~~Fix the secret, make the WIP snapshot branch, collect the files from §3.~~ Done 2026-10-15.
 2. ~~Rebuild `main.nf`; `nextflow run . -profile test -stub` passes.~~ Done 2026-10-15.
-3. **Next, on Dardel:**
-   1. Replace the old checkout with a fresh clone.
-   2. Unpack Cell Ranger 10.0.0 to `…/paulpyl/tools/` (the tarball is already in the
-      old checkout's `bin/`).
-   3. `./run_dardel.sh -stub`, then a real run.
-   4. Watch Cell Ranger on `main` (64 cores, 200 GB).
-4. Fix what the first real run reveals, most likely the MiXCR export field names and
-   the changeo-10x output file name.
-5. Add `TRUST4`.
-6. Add `REPORT`.
-7. v0.2: PBMC 10k with B+T+ADT. Use the protein data as ground truth for B/T calls
+3. ~~Fresh Dardel checkout, stub run, first real run.~~ Done 2026-10-16: everything
+   except MiXCR runs end to end on real data.
+4. ~~Fix what the first real run reveals.~~ Done for Cell Ranger (output path), the
+   expression check (scikit-image fallback, marker rule) and the comparison
+   (tied calls). **MiXCR is still unrun**, so its export field names are untested.
+5. **Decide where MiXCR runs** (see "Dardel constraints" below): laptop, a PDC
+   exception or proxy, or the whole pipeline on the Mac.
+6. Add `TRUST4`. It has no licence check, so it can run on Dardel compute nodes.
+7. Add `REPORT`.
+8. v0.2: PBMC 10k with B+T+ADT. Use the protein data as ground truth for B/T calls
    and hybrids. Then subsample reads to test how the tools behave at lower depth.
+
+### Dardel constraints (measured 2026-10-16)
+
+- **Compute nodes have no outbound internet.** 10x, zenodo.org and github.com are
+  all unreachable from `shared`. Downloads therefore run on the login node
+  (`FETCH_TAR` uses `executor 'local'`).
+- **MiXCR checks its licence online** at `licensing-api.milaboratories.com:443` (and
+  sends statistics to `stat2.milaboratories.com`). On compute nodes it fails with
+  `License error: ConnectionError`. Use `--skip_mixcr` there until this is solved.
+- **Cell Ranger multi, 1k B cells:** 17 min wall time on `main`, but only 1.5 CPU-hours
+  and 16 GB peak memory. Expect about 30 min queueing for a whole node first.
+- **The Immcantation image** needed longer than the default 20 min to convert on
+  Lustre, so `pullTimeout` is now 60 min.
+
+### Running on the Mac (assessed 2026-10-16)
+
+- The M4 Max with 64 GB, using the Lima `apptainer` VM (8 CPUs, 54 GB, Rosetta).
+- Cell Ranger runs inside an **amd64 Ubuntu container** under Rosetta. Plain Rosetta
+  in the ARM VM fails because there is no x86 loader.
+- `cellranger testrun`: **91 s on the Mac vs 182 s** on an 8-core Dardel node.
+- MiXCR's licence check works there, because the Mac has internet.
+- **The constraint is disk:** 113 GB free. The 1k sample needs about 25 GB, including
+  the 16 GB GEX reference; the PBMC 10k would be tight.
+- Needs a `mac` profile, and every image pulled as amd64.
+
+### First real results: 1k B cells, Cell Ranger vs Immcantation (2026-10-16)
+
+- **Same 1,107 cells** with a BCR from both tools: 1,078 paired, 18 with more than
+  one productive IGH.
+- **CDR3 agreement is essentially 100 %** for IGH, IGK and IGL. J genes agree
+  98–99.6 %, light-chain V genes 98–100 %.
+- **IGH V genes agree only 85.8 %** (88.5 % once IgBLAST's tied calls count as a
+  match). Nearly all disagreements are between near-identical genes:
+  - IGHV3-33 vs 3-30 / 3-30-3 (87 cells)
+  - IGHV1-69D vs 1-69 (39)
+  - IGHV4-59 vs 4-4 (13)
+  - IGHV4-30-4 / 4-31 / 4-30-2 (14)
+
+  This comes from the germline references: 10x's Ensembl-based one vs IMGT. It's
+  a real finding for the comparison, not a bug.
+- **Expression:** 1,143 of 1,148 cells are B-like and 96.6 % of them have a BCR (5 "neither", 0 T, 0 hybrids, 17 predicted doublets).
+  - An LCK-only group of 119 B cells (no CD3D/E/G, no CD2) made the T score look
+    bimodal. Before the ≥3-marker rule, these were mis-called as B/T hybrids.
+  - TRBC2 counts appear in about 64 % of B cells, which confirms TR constant genes
+    must stay out of the call.
 
 ## 6. Known bugs in the uncommitted rewrite (why it's a snapshot, not a base)
 
