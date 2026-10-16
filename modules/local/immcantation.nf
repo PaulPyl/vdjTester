@@ -1,7 +1,8 @@
 // Immcantation's 10x workflow (changeo-10x): IgBLAST re-annotation of Cell Ranger's
 // assembled contigs, then Change-O MakeDb into AIRR format. It does not assemble
 // from raw reads, so it is a second annotation of Cell Ranger's contigs, not an
-// independent caller. All steps used here are Python (Change-O); no R.
+// independent caller. Annotation is Python (IgBLAST + Change-O); clone definition
+// (scoper) and the threshold plot run R inside the container.
 process IMMCANTATION {
     tag "${sample_id}:${chain}"
     label 'process_low'

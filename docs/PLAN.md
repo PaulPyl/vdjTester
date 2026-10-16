@@ -112,9 +112,9 @@ should run end to end on Dardel.
 **Data:** 10x "1k B cells, 5′ v2, GEX + BCR" (`sc5p_v2_hs_B_1k_multi_5gex_b`, already
 on the laptop).
 
-**Language: Python.** The decision was made on 2026-10-15. The Immcantation steps
-used here (`changeo-10x`: IgBLAST + Change-O) are Python too, so R isn't needed
-anywhere. All Python steps share the scanpy 1.12 image that G_Nordmark_nextflow uses.
+**Language: Python.** The decision was made on 2026-10-15. Our own code is all
+Python. `changeo-10x` calls R internally (scoper for clones, shazam for the
+threshold plot), but only inside the Immcantation container. All Python steps share the scanpy 1.12 image that G_Nordmark_nextflow uses.
 
 | step | process (file) | input → output | status |
 |---|---|---|---|
