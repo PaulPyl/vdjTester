@@ -291,6 +291,37 @@ For v0.2:
 - **Storage:** the project moves to the external SanDisk Extreme Pro SSD, because the
   Mac's internal disk is 97 % full.
 
+### cll_1, first longitudinal run on the Mac (2026-10-16)
+
+- **Run:** 3 timepoints (diagnosis, 3 years, 5 years; ibrutinib-sensitive), GEX + BCR + TCR.
+  - Cell Ranger took about 75–82 min per timepoint on the Mac.
+  - After the VM went from 56 to 40 GiB, swapping stayed around 5 MB/min (it had
+    been up to 3 GB/min).
+- **Cells with VDJ:** about 2,000–2,300 per timepoint, with BCR and TCR from all three tools.
+  - MiXCR misses about 12 % of BCR cells relative to Cell Ranger, but calls more T
+    cells, including 117 TCR barcodes at timepoint 1 that are not in Cell Ranger's
+    GEX matrix.
+- **Agreement where tools call the same cell:** IGH V, J and CDR3 100 %; TCR 97–98 %;
+  IGL V 94–96 % (a naming difference on one gene).
+- **The CLL clone** (IGH CDR3 `ARMNYNTTRDPNWFDP`, lambda light chain) is the dominant
+  BCR clone in **every tool at every timepoint**.
+  - 100 % of BCR cells at timepoints 1 and 3, 99.8 % at timepoint 2.
+  - MiXCR splits off 1–3 extra minor clonotypes.
+- **An expanded T-cell clone** (TRB CDR3 `ASSQEATENQPQH`) makes up 14–26 % of T cells at
+  every timepoint, with all tools agreeing. The T repertoire is stable over time
+  (Morisita–Horn 0.82–0.93).
+- **The expression check under-calls B cells in CLL.** At timepoint 1, 639 BCR+ cells
+  are classed "neither".
+  - Three of the seven B markers are nearly silent in the CLL cells: CD22 is detected
+    in 3 % of them, CD79B in 11 %, MS4A1 in 17%. That's the classic CLL phenotype,
+    made worse by lower depth.
+  - CLL-associated genes are well detected: FCER2/CD23 65–83 %, ROR1 48–55 %,
+    BLK 48–67 %, FCRLA 39–64 %.
+  - **Open decision:** a CLL-aware or broader B marker set, and/or 2 markers instead
+    of 3.
+- No B/T hybrid singlets: 0–3 per timepoint. Predicted doublets: 32–75. Scrublet
+  ran with the fixed 0.25 threshold, because the scanpy container lacks scikit-image.
+
 ## 6. Known bugs in the uncommitted rewrite (why it's a snapshot, not a base)
 
 - `main.nf` uses names it never includes (`DOWNLOAD_CELLRANGER_DATA`, `RUN_CELLRANGER`,
