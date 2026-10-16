@@ -17,13 +17,9 @@ jupyter: python3
 ---
 
 ```{python}
-#| tags: [parameters]
-data_dir = "."
-```
-
-```{python}
 import glob
 import itertools
+import os
 import re
 from pathlib import Path
 
@@ -32,7 +28,10 @@ import numpy as np
 import pandas as pd
 from IPython.display import Markdown, display
 
-D = Path(data_dir)
+# The tables to report on: data/ next to this file (as the REPORT task stages them),
+# or VDJTESTER_REPORT_DATA. An environment variable rather than a Quarto parameter,
+# because parameters need papermill.
+D = Path(os.environ.get("VDJTESTER_REPORT_DATA", "data"))
 TOOLS = ["cellranger", "immcantation", "mixcr", "trust4", "trust4_gex"]
 COLORS = dict(zip(TOOLS, ["#4C72B0", "#8C8C8C", "#DD8452", "#55A868", "#8172B3"]))
 LABELS = {"cellranger": "Cell Ranger", "immcantation": "Immcantation", "mixcr": "MiXCR",
@@ -118,7 +117,12 @@ if len(metrics):
     wide = m[m["metric"].isin(keep)].pivot_table(index="sample_id", columns="metric", values="Metric Value", aggfunc="first")
     wide = wide[[k for k in keep if k in wide.columns]].reset_index()
     wide = samples.merge(wide, on="sample_id", how="left")
-    show(wide, floatfmt=".3g")
+    for col in wide.columns[3:]:
+        v = pd.to_numeric(wide[col], errors="coerce")
+        # Cell Ranger reports fractions as 0-1 and counts as numbers.
+        wide[col] = [f"{x:.1%}" if "pair" in col else f"{x:,.0f}" for x in v]
+    wide.columns = [c.replace("Gene Expression: ", "GEX: ") for c in wide.columns]
+    show(wide)
 ```
 
 ## Cell recovery per method
@@ -233,7 +237,7 @@ def pooled(df):
 if len(pairwise):
     pool = pooled(pairwise)
     loci = [l for l in ["IGH", "IGK", "IGL", "TRA", "TRB"] if l in set(pool["locus"])]
-    fig, axes = plt.subplots(1, len(loci), figsize=(3.3 * len(loci), 0.32 * pool["pair"].nunique() + 1.6), sharey=True)
+    fig, axes = plt.subplots(1, len(loci), figsize=(3.4 * len(loci), 0.42 * pool["pair"].nunique() + 2), sharey=True)
     pairs = sorted(pool["pair"].unique())
     labels = [l for _, l in METRICS]
     for ax, locus in zip(np.atleast_1d(axes), loci):
@@ -242,7 +246,7 @@ if len(pairwise):
         ax.imshow(mat, vmin=0.7, vmax=1.0, cmap="viridis", aspect="auto")
         for (i, j), v in np.ndenumerate(mat):
             if v == v:
-                ax.text(j, i, f"{100 * v:.0f}", ha="center", va="center", fontsize=6.5,
+                ax.text(j, i, f"{100 * v:.0f}", ha="center", va="center", fontsize=8,
                         color="white" if v < 0.9 else "black")
         ax.set_xticks(range(len(labels)), labels, rotation=60, ha="right")
         ax.set_yticks(range(len(pairs)), pairs)
@@ -305,22 +309,28 @@ for sid in samples["sample_id"]:
     if e["umap1"].notna().any():
         cls = classes[classes["sample_id"] == sid]
         present = [t for t in tools if t in set(cls["tool"])]
-        ncol = 1 + len(present)
-        fig, axes = plt.subplots(1, ncol, figsize=(3.1 * ncol, 3.2))
+        npanel = 1 + len(present)
+        ncol = min(3, npanel)
+        nrow = int(np.ceil(npanel / ncol))
+        fig, axes = plt.subplots(nrow, ncol, figsize=(3.6 * ncol, 3.4 * nrow))
+        axes = np.atleast_1d(axes).ravel()
+        for ax in axes[npanel:]:
+            ax.axis("off")
+        axes = axes[:npanel]
         ax = axes[0]
         for k, col in EXPR_COLORS.items():
             sel = e["expr_class"] == k
-            ax.scatter(e.loc[sel, "umap1"], e.loc[sel, "umap2"], s=2, c=col, label=k, rasterized=True)
+            ax.scatter(e.loc[sel, "umap1"], e.loc[sel, "umap2"], s=3, c=col, label=k, rasterized=True)
         ax.set_title("expression class")
-        ax.legend(markerscale=4, fontsize=6, frameon=False, loc="best")
+        ax.legend(markerscale=4, fontsize=7, frameon=False, loc="best")
         for ax, t in zip(axes[1:], present):
             v = cls[cls["tool"] == t].set_index("cell_id")["vdj_class"]
             cl = e["cell_id"].map(v).fillna("none")
             for k in ["none", "BCR", "TCR", "both"]:
                 sel = cl == k
-                ax.scatter(e.loc[sel, "umap1"], e.loc[sel, "umap2"], s=2, c=VDJ_COLORS[k], label=k, rasterized=True)
-            ax.set_title(LABELS[t])
-        axes[-1].legend(markerscale=4, fontsize=6, frameon=False, loc="best")
+                ax.scatter(e.loc[sel, "umap1"], e.loc[sel, "umap2"], s=3, c=VDJ_COLORS[k], label=k, rasterized=True)
+            ax.set_title(f"{LABELS[t]}: VDJ class")
+        axes[1].legend(markerscale=4, fontsize=7, frameon=False, loc="best")
         for ax in axes:
             ax.set_xticks([]); ax.set_yticks([])
             ax.spines[["left", "bottom"]].set_visible(False)

@@ -114,9 +114,21 @@ process REPORT {
     script:
     """
     export HOME=\$PWD XDG_CACHE_HOME=\$PWD/.cache MPLCONFIGDIR=\$PWD/.mpl NUMBA_CACHE_DIR=\$PWD/.numba
-    # Quarto renders next to the source, so work on a copy in the task directory.
+    export JUPYTER_RUNTIME_DIR=\$PWD/.jupyter XDG_RUNTIME_DIR=\$PWD/.runtime
+    mkdir -p \$JUPYTER_RUNTIME_DIR \$XDG_RUNTIME_DIR
+    # conda-forge's quarto finds deno, pandoc etc. through its activation script,
+    # which does not run in a container. Its DENO_DOM path points at the build host.
+    if [ -f /opt/conda/etc/conda/activate.d/quarto.sh ]; then
+        . /opt/conda/etc/conda/activate.d/quarto.sh
+        [ -e "\$QUARTO_DENO_DOM" ] || unset QUARTO_DENO_DOM
+    fi
+    # Quarto's own execution goes through a Jupyter kernel, which never answered
+    # under Rosetta (Mac). So: convert to a notebook, execute it in-process with
+    # run_notebook.py, and let Quarto only render the result. The tables are in data/.
     cp ${qmd} vdjtester_report.qmd
-    quarto render vdjtester_report.qmd --to html -P data_dir:\$PWD/data
+    quarto convert vdjtester_report.qmd -o source.ipynb
+    run_notebook.py source.ipynb vdjtester_report.ipynb
+    quarto render vdjtester_report.ipynb --to html
     """
 
     stub:
