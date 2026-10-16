@@ -6,6 +6,11 @@ B and T scores use only non-receptor marker genes (assets/markers.tsv, sets B
 and T), so the expression evidence is independent of the VDJ transcripts. Ig and
 TR constant-region expression is reported alongside but never used for the call.
 
+A cell is positive for a set only if at least --min-markers different genes of
+that set are detected AND its score clears the threshold. On the 10x 1k B-cell
+sample, ~120 B cells crossed the T threshold on LCK alone (no CD3D/E/G or CD2),
+which a score threshold by itself would have called B/T hybrids.
+
 Thresholds: a score is called positive above the crossing point of a two-component
 Gaussian mixture when the score is clearly bimodal (BIC); otherwise above
 --score-min. A B-enriched sample has no T population to fit, so the fallback is
@@ -60,6 +65,8 @@ def main():
     parser.add_argument("--vdj", required=True, help="vdj_cell_classes.tsv from vdj_compare.py")
     parser.add_argument("--markers", required=True)
     parser.add_argument("--score-min", type=float, default=0.1)
+    parser.add_argument("--min-markers", type=int, default=3,
+                        help="distinct marker genes of a set that must be detected")
     parser.add_argument("--min-genes", type=int, default=200)
     parser.add_argument("--max-pct-mt", type=float, default=20.0)
     parser.add_argument("--outdir", default=".")
@@ -86,10 +93,14 @@ def main():
         sc.pp.scrublet(adata, threshold=0.25)
         doublet_threshold = "0.25 (fixed: scikit-image missing)"
 
+    markers = pd.read_csv(args.markers, sep="\t", comment=None)
+    for name in ["B", "T"]:
+        genes, _ = gene_set(markers, name, adata.var_names)
+        adata.obs[f"{name}_markers_detected"] = np.asarray((adata[:, genes].X > 0).sum(axis=1)).ravel()
+
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
 
-    markers = pd.read_csv(args.markers, sep="\t", comment=None)
     summary = []
     thresholds = {}
     for name in ["B", "T"]:
@@ -97,11 +108,15 @@ def main():
         sc.tl.score_genes(adata, genes, score_name=f"{name}_score", random_state=0)
         ref = adata.obs.loc[adata.obs["qc_pass"], f"{name}_score"]
         thresholds[name], method = mixture_threshold(ref, args.score_min)
-        adata.obs[f"{name}_pos"] = adata.obs[f"{name}_score"] > thresholds[name]
+        adata.obs[f"{name}_pos"] = (adata.obs[f"{name}_score"] > thresholds[name]) & (
+            adata.obs[f"{name}_markers_detected"] >= args.min_markers
+        )
+        above_only = (adata.obs[f"{name}_score"] > thresholds[name]) & ~adata.obs[f"{name}_pos"]
         summary += [
             {"metric": f"{name}_genes_used", "value": ",".join(genes)},
             {"metric": f"{name}_genes_missing", "value": ",".join(missing)},
             {"metric": f"{name}_threshold", "value": f"{thresholds[name]:.3f} ({method})"},
+            {"metric": f"{name}_above_threshold_but_too_few_markers", "value": int(above_only.sum())},
         ]
     for name in ["Ig_const", "TR_const"]:
         genes, _ = gene_set(markers, name, adata.var_names)
@@ -116,7 +131,7 @@ def main():
 
     cells = adata.obs[[
         "qc_pass", "n_genes_by_counts", "pct_counts_mt", "doublet_score", "predicted_doublet",
-        "B_score", "T_score", "Ig_const_log_expr", "TR_const_log_expr", "expr_class",
+        "B_score", "T_score", "B_markers_detected", "T_markers_detected", "Ig_const_log_expr", "TR_const_log_expr", "expr_class",
     ]].rename_axis("cell_id").reset_index()
     cells.to_csv(out / "expression_cells.tsv", sep="\t", index=False, float_format="%.4f")
 

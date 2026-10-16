@@ -50,6 +50,7 @@ process EXPRESSION_CHECK {
         --vdj ${cell_classes} \\
         --markers ${markers} \\
         --score-min ${params.score_min} \\
+        --min-markers ${params.min_markers} \\
         --outdir .
     """
 
