@@ -6,13 +6,13 @@
 process IMMCANTATION {
     tag "${sample_id}:${chain}"
     label 'process_low'
-    publishDir "${params.outdir}/immcantation", mode: 'copy'
+    publishDir path: { "${params.outdir}/immcantation/${sample_id}" }, mode: 'copy'
 
     input:
     tuple val(sample_id), val(chain), path(vdj_dir)
 
     output:
-    path "immcantation.${sample_id}.${chain}.tsv", emit: calls
+    tuple val(sample_id), path("immcantation.${sample_id}.${chain}.tsv"), emit: calls
     path "immcantation.${sample_id}.${chain}.log"
 
     script:

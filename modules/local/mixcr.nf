@@ -4,14 +4,14 @@
 process MIXCR {
     tag "${sample_id}:${fastq_id}"
     label 'process_medium'
-    publishDir "${params.outdir}/mixcr", mode: 'copy'
+    publishDir path: { "${params.outdir}/mixcr/${sample_id}" }, mode: 'copy'
     secret 'MI_LICENSE'
 
     input:
-    tuple val(sample_id), val(fastq_id), path(fastq_root), val(subdir)
+    tuple val(sample_id), val(fastq_id), path(lib_dir)
 
     output:
-    path "mixcr.${sample_id}.${fastq_id}.tsv", emit: calls
+    tuple val(sample_id), path("mixcr.${sample_id}.${fastq_id}.tsv"), emit: calls
     path "${fastq_id}.assembledCells.clns"
     path "${fastq_id}.*report*"
 
@@ -20,8 +20,8 @@ process MIXCR {
     export HOME=\$PWD TMPDIR=\$PWD XDG_CACHE_HOME=\$PWD/.cache
 
     # Concatenate lanes; gzip members concatenate cleanly.
-    cat ${fastq_root}/${subdir}/${fastq_id}_S*_L*_R1_001.fastq.gz > R1.fastq.gz
-    cat ${fastq_root}/${subdir}/${fastq_id}_S*_L*_R2_001.fastq.gz > R2.fastq.gz
+    cat ${lib_dir}/${fastq_id}_S*_L*_R1_001.fastq.gz > R1.fastq.gz
+    cat ${lib_dir}/${fastq_id}_S*_L*_R2_001.fastq.gz > R2.fastq.gz
 
     mixcr analyze 10x-sc-xcr-vdj \\
         --species hs \\

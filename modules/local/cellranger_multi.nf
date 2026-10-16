@@ -1,45 +1,43 @@
 // Cell Ranger multi on one sample. Runs from a host install (params.cellranger_dir),
 // not a container: 10x does not allow redistributing Cell Ranger.
 //
-// The multi config is written here from params.libraries so its paths point into
-// the task directory; a hand-written CSV with absolute paths breaks on every host.
+// Each library arrives as its own FASTQ directory (staged under fastqs/), and the
+// multi config is written here from the library list so its paths point into the
+// task directory; a hand-written CSV with absolute paths breaks on every host.
 process CELLRANGER_MULTI {
     tag "${sample_id}"
     label 'process_cellranger'
-    publishDir "${params.outdir}/cellranger", mode: 'copy', pattern: '{multi_config.csv,versions.txt,per_sample_outs/**}'
+    publishDir path: { "${params.outdir}/cellranger/${sample_id}" }, mode: 'copy', pattern: '{multi_config.csv,versions.txt,per_sample_outs/**}'
 
     input:
-    tuple val(sample_id), path(fastq_dir), path(gex_ref), path(vdj_ref)
-    val libraries
+    tuple val(sample_id), val(libraries), path(lib_dirs, stageAs: 'fastqs/*'), path(gex_ref), path(vdj_ref)
 
     output:
     tuple val(sample_id), path('per_sample_outs/vdj_b'), emit: vdj_b, optional: true
     tuple val(sample_id), path('per_sample_outs/vdj_t'), emit: vdj_t, optional: true
     tuple val(sample_id), path('per_sample_outs/sample_filtered_feature_bc_matrix.h5'), emit: filtered_h5
-    path "cellranger.${sample_id}.*.csv", emit: calls
+    tuple val(sample_id), path("cellranger.${sample_id}.*.csv"), emit: calls
     path 'per_sample_outs/{web_summary.html,metrics_summary.csv}', emit: summary
     path 'multi_config.csv'
     path 'versions.txt'
 
     script:
     def cr_path = params.cellranger_dir ? "export PATH=${params.cellranger_dir}:\$PATH" : ''
-    def config_lines = [
-        '[gene-expression]', 'reference,@GEX_REF@', 'create-bam,false', '',
-        '[vdj]', 'reference,@VDJ_REF@', '',
-        '[libraries]', 'fastq_id,fastqs,feature_types',
-    ] + libraries.collect { lib -> "${lib.fastq_id},@FASTQS@/${lib.subdir},${lib.feature_types}" }
-    def printf_args = config_lines.collect { line -> "'${line}'" }.join(' ')
+    def lib_lines = libraries.collect { lib ->
+        "printf '%s\\n' \"${lib.fastq_id},\$(readlink -f fastqs/${lib.dir}),${lib.feature_types}\""
+    }.join('\n        ')
     """
     ${cr_path}
     # Cell Ranger writes telemetry under \$HOME; containers may give it an unwritable one.
     [ -w "\${HOME:-/nonexistent}" ] || export HOME=\$PWD
     cellranger --version > versions.txt
 
-    printf '%s\\n' ${printf_args} \\
-        | sed -e "s#@GEX_REF@#\$(readlink -f ${gex_ref})#" \\
-              -e "s#@VDJ_REF@#\$(readlink -f ${vdj_ref})#" \\
-              -e "s#@FASTQS@#\$(readlink -f ${fastq_dir})#" \\
-        > multi_config.csv
+    {
+        printf '%s\\n' '[gene-expression]' "reference,\$(readlink -f ${gex_ref})" 'create-bam,false' ''
+        printf '%s\\n' '[vdj]' "reference,\$(readlink -f ${vdj_ref})" ''
+        printf '%s\\n' '[libraries]' 'fastq_id,fastqs,feature_types'
+        ${lib_lines}
+    } > multi_config.csv
 
     cellranger multi \\
         --id=${sample_id} \\

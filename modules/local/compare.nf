@@ -2,15 +2,14 @@
 process COMPARE_VDJ {
     tag "${sample_id}"
     label 'process_low'
-    publishDir "${params.outdir}/compare", mode: 'copy'
+    publishDir path: { "${params.outdir}/compare/${sample_id}" }, mode: 'copy'
 
     input:
-    val sample_id
-    path calls
+    tuple val(sample_id), path(calls)
 
     output:
-    path 'vdj_cell_classes.tsv', emit: cell_classes
-    path 'vdj_calls_long.tsv'
+    tuple val(sample_id), path('vdj_cell_classes.tsv'), emit: cell_classes
+    tuple val(sample_id), path('vdj_calls_long.tsv'), emit: calls_long
     path 'vdj_tool_summary.tsv'
     path 'vdj_pairwise_agreement.tsv'
 
@@ -29,11 +28,10 @@ process COMPARE_VDJ {
 process EXPRESSION_CHECK {
     tag "${sample_id}"
     label 'process_low'
-    publishDir "${params.outdir}/expression", mode: 'copy'
+    publishDir path: { "${params.outdir}/expression/${sample_id}" }, mode: 'copy'
 
     input:
-    tuple val(sample_id), path(filtered_h5)
-    path cell_classes
+    tuple val(sample_id), path(filtered_h5), path(cell_classes)
     path markers
 
     output:
@@ -59,5 +57,35 @@ process EXPRESSION_CHECK {
     stub:
     """
     touch expression_cells.tsv expression_vs_vdj.tsv expression_summary.tsv marker_scores.png
+    """
+}
+
+// Clone sizes per timepoint and how they change over time, per tool, for one patient.
+process CLONE_TRACKING {
+    tag "${patient}"
+    label 'process_low'
+    publishDir path: { "${params.outdir}/clones/${patient}" }, mode: 'copy'
+
+    input:
+    tuple val(patient), val(sample_ids), val(timepoints), path(calls, stageAs: 'calls_?/*')
+
+    output:
+    path 'clonality.tsv'
+    path 'top_clones.tsv'
+    path 'clone_tracking.tsv'
+    path 'timepoint_overlap.tsv'
+    path 'dominant_clone_agreement.tsv'
+
+    script:
+    def samples = [sample_ids, timepoints, calls].transpose()
+        .collect { sid, tp, f -> "--sample ${sid} ${tp} ${f}" }
+        .join(' ')
+    """
+    clone_tracking.py ${samples} --outdir .
+    """
+
+    stub:
+    """
+    touch clonality.tsv top_clones.tsv clone_tracking.tsv timepoint_overlap.tsv dominant_clone_agreement.tsv
     """
 }
