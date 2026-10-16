@@ -81,9 +81,21 @@ workflow {
             }
     }
 
+    // Libraries per sample, known up front, so each sample starts as soon as its own
+    // libraries are in rather than after every download (groupTuple without a size
+    // waits for the whole channel).
+    def libs_per_sample = params.samplesheet
+        ? file(params.samplesheet).splitCsv(header: true).countBy { row -> row.sample_id }
+        : [(params.sample_id): params.libraries.size()]
+    def vdj_per_sample = params.samplesheet
+        ? file(params.samplesheet).splitCsv(header: true).findAll { row -> row.feature_types.startsWith('VDJ') }.countBy { row -> row.sample_id }
+        : [(params.sample_id): params.libraries.count { lib -> lib.feature_types.startsWith('VDJ') }]
+
     // --- Cell Ranger multi, one task per sample ------------------------------------
     ch_samples = ch_lib_items
+        .map { sid, lib, dir -> tuple(groupKey(sid, libs_per_sample[sid]), lib, dir) }
         .groupTuple()
+        .map { key, libs, dirs -> tuple(key.toString(), libs, dirs) }
         .combine(ch_refs)
     CELLRANGER_MULTI(ch_samples)
 
@@ -103,10 +115,14 @@ workflow {
     }
 
     // --- Per-sample comparison and expression check --------------------------------
+    // Per VDJ library: one Cell Ranger file, one Immcantation file, one MiXCR file.
+    def calls_per_vdj = params.skip_mixcr ? 2 : 3
     ch_calls = CELLRANGER_MULTI.out.calls
         .transpose()
         .mix(IMMCANTATION.out.calls, ch_mixcr_calls)
+        .map { sid, f -> tuple(groupKey(sid, vdj_per_sample[sid] * calls_per_vdj), f) }
         .groupTuple()
+        .map { key, files -> tuple(key.toString(), files) }
     COMPARE_VDJ(ch_calls)
 
     EXPRESSION_CHECK(
@@ -115,9 +131,13 @@ workflow {
     )
 
     // --- Clone tracking across a patient's timepoints ------------------------------
+    def samples_per_patient = params.samplesheet
+        ? file(params.samplesheet).splitCsv(header: true).collect { row -> [row.patient, row.sample_id] }.unique().countBy { pair -> pair[0] }
+        : [(params.sample_id): 1]
     ch_tracking = COMPARE_VDJ.out.calls_long
         .join(ch_meta)
-        .map { sid, calls, meta -> tuple(meta.patient, sid, meta.timepoint, calls) }
+        .map { sid, calls, meta -> tuple(groupKey(meta.patient, samples_per_patient[meta.patient]), sid, meta.timepoint, calls) }
         .groupTuple()
+        .map { key, sids, tps, calls -> tuple(key.toString(), sids, tps, calls) }
     CLONE_TRACKING(ch_tracking)
 }
