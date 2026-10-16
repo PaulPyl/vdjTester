@@ -322,6 +322,59 @@ For v0.2:
 - No B/T hybrid singlets: 0–3 per timepoint. Predicted doublets: 32–75. Scrublet
   ran with the fixed 0.25 threshold, because the scanpy container lacks scikit-image.
 
+### Plan: HTML report (step 7)
+
+**Form.** A `REPORT` process runs once per pipeline run, after `CLONE_TRACKING`. It
+renders `assets/report/vdjtester_report.qmd` with Quarto (Python/Jupyter engine) to
+a single self-contained HTML file (`embed-resources: true`), so it can be emailed or
+attached to a ticket. Inputs are the published TSVs and PNGs from every step, and the
+Nextflow trace. No raw data. Quarto and jupyter go into `containers/python_env.yml`.
+Turn on `trace` in `nextflow.config` so runtimes and peak memory are available.
+
+**Sections**
+
+1. **Run overview:** samples, patients, timepoints and libraries.
+   - Tool and reference versions (`cellranger --version`, MiXCR, TRUST4, IMGT tag).
+   - Cell Ranger `metrics_summary.csv` per sample: reads, cells, median genes, VDJ
+     metrics.
+   - Runtime and peak memory per step, from the trace.
+2. **Cell recovery per tool:** cells with BCR/TCR per tool and sample.
+   - An UpSet-style chart of which tools call which cells.
+   - MiXCR barcodes outside Cell Ranger's GEX cells (`not_in_gex`).
+   - Paired-chain rates, and cells with more than one productive IGH.
+3. **Agreement between tools:**
+   - A heatmap per locus: tool pairs × level (strict V → tied → paralog → germline),
+     plus J, CDR3 and all-three.
+   - The top entries from `vdj_v_disagreements.tsv` with their germline identity,
+     flagging biologically distinct pairs such as IGHV4-34 vs IGHV4-4.
+4. **Expression vs VDJ:**
+   - UMAP coloured by expression class and by each tool's VDJ class. Needs a UMAP
+     from `EXPRESSION_CHECK`: neighbours on PCA of log-normalised counts.
+   - UCell score histograms with thresholds, and the maxRank sensitivity.
+   - BCR/TCR capture fraction per expression class; hybrid and doublet counts, with
+     a list of hybrid candidates.
+   - The B-marker caveat for CLL (CD22/CD79B/CD20 low).
+5. **Clonal structure per sample:** clonality (top-1, top-10, Simpson, Shannon) per
+   tool, and the dominant clone with agreement and ties, for both clonotype
+   definitions (strict, CDR3-only).
+6. **Longitudinal, per patient:**
+   - Frequency trajectories of the top clones over timepoints, one panel per tool
+     (B and T separately).
+   - Morisita–Horn overlap heatmaps between timepoints.
+   - Whether all tools track the same dominant clone at every timepoint.
+7. **Methods and caveats:**
+   - Normalisation rules: barcodes, alleles, CDR3 core, duplicate and germline
+     collapse.
+   - UCell and threshold rules.
+   - Known limitations: TRUST4 restricted to GEX cells; MiXCR needs online licensing
+     (not on Dardel compute nodes); Scrublet threshold.
+
+**Order of work:**
+1. Add the UMAP to `EXPRESSION_CHECK`, and quarto + jupyter to the container.
+2. Write the .qmd against the cll_1 outputs, rendering locally.
+3. Add the `REPORT` process and the trace config, and stub it.
+4. Render for cll_1 and the 1k sample.
+
 ## 6. Known bugs in the uncommitted rewrite (why it's a snapshot, not a base)
 
 - `main.nf` uses names it never includes (`DOWNLOAD_CELLRANGER_DATA`, `RUN_CELLRANGER`,
