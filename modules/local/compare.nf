@@ -125,8 +125,9 @@ process REPORT {
     # Quarto's own execution goes through a Jupyter kernel, which never answered
     # under Rosetta (Mac). So: convert to a notebook, execute it in-process with
     # run_notebook.py, and let Quarto only render the result. The tables are in data/.
-    cp ${qmd} vdjtester_report.qmd
-    quarto convert vdjtester_report.qmd -o source.ipynb
+    # A real copy (the staged .qmd is a symlink), under another name.
+    cp -L ${qmd} report_source.qmd
+    quarto convert report_source.qmd -o source.ipynb
     run_notebook.py source.ipynb vdjtester_report.ipynb
     quarto render vdjtester_report.ipynb --to html
     """
