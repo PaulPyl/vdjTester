@@ -6,6 +6,17 @@ B and T scores use only non-receptor marker genes (assets/markers.tsv, sets B
 and T), so the expression evidence is independent of the VDJ transcripts. Ig and
 TR constant-region expression is reported alongside but never used for the call.
 
+Scores are UCell (Andreatta & Carmona 2021) by default: within each cell, genes are
+ranked by expression (ties averaged) and genes ranked at or beyond maxRank count as
+not expressed; score = 1 - U / (n * maxRank - n(n+1)/2), where U is the
+Mann-Whitney U statistic of the n signature genes' ranks (as in UCell 2.x). It depends only on the cell itself, not on the
+rest of the dataset, so thresholds transfer between samples. maxRank is set once
+per dataset from the data: the median number of detected genes per cell (QC-pass
+cells), so that genes a typical cell does detect are not discarded. The 10th
+percentile is computed too, and the Spearman correlation between the two settings
+is reported as a sensitivity check. `--score-method scanpy` keeps the earlier
+sc.tl.score_genes scores for comparison.
+
 A cell is positive for a set only if at least --min-markers different genes of
 that set are detected AND its score clears the threshold. On the 10x 1k B-cell
 sample, ~120 B cells crossed the T threshold on LCK alone (no CD3D/E/G or CD2),
@@ -13,8 +24,10 @@ which a score threshold by itself would have called B/T hybrids.
 
 Thresholds: a score is called positive above the crossing point of a two-component
 Gaussian mixture when the score is clearly bimodal (BIC); otherwise above
---score-min. A B-enriched sample has no T population to fit, so the fallback is
-the normal case for the T score there.
+--score-min, which is also a floor under the mixture threshold. A B-enriched sample
+has no T population to fit, so the fallback is the normal case for the T score there.
+Default floor: 0.2 for UCell (1k B cells: B cells score ~0.67, 1st percentile 0.38;
+LCK-only cells score T ~0.06, max 0.14), 0.1 for scanpy scores.
 
 "both" cells are split by Scrublet's doublet call into `both_doublet` and
 `both_singlet`, the latter being candidate B/T hybrid (dual-expresser) cells.
@@ -48,9 +61,47 @@ def mixture_threshold(scores, score_min):
         grid = np.linspace(x.min(), x.max(), 2000).reshape(-1, 1)
         post_hi = two.predict_proba(grid)[:, hi]
         between = (grid.ravel() > two.means_.ravel()[lo]) & (grid.ravel() < two.means_.ravel()[hi])
-        crossing = grid.ravel()[between][np.argmin(np.abs(post_hi[between] - 0.5))]
-        return float(crossing), "mixture"
+        crossing = float(grid.ravel()[between][np.argmin(np.abs(post_hi[between] - 0.5))])
+        if crossing < score_min:
+            # A mixture can split exact zeros from a sliver of near-zero scores
+            # (e.g. single-UMI LCK in B cells); never go below the floor.
+            return float(score_min), f"mixture at {crossing:.3f}, floored"
+        return crossing, "mixture"
     return float(score_min), "fallback"
+
+
+def ucell(counts, sig_cols, max_rank):
+    """UCell scores from a cells x genes CSR matrix of raw counts.
+
+    Ranks are within-cell and descending, ties averaged; genes absent from a cell
+    tie at the bottom. Matches R UCell 2.16 (checked to 1e-12 on the 1k B-cell sample).
+    Normalisation and log transform do not change within-cell ranks, so raw
+    counts give the same scores as normalised data.
+    """
+    counts = counts.tocsr()
+    n_genes = counts.shape[1]
+    scores = {name: np.zeros(counts.shape[0]) for name in sig_cols}
+    for i in range(counts.shape[0]):
+        row = counts.getrow(i)
+        nonzero = np.sort(row.data)
+        nnz = len(nonzero)
+        for name, cols in sig_cols.items():
+            n = len(cols)
+            values = row[:, cols].toarray().ravel()
+            ranks = np.empty(n)
+            for j, v in enumerate(values):
+                if v > 0:
+                    greater = nnz - np.searchsorted(nonzero, v, side="right")
+                    equal = np.searchsorted(nonzero, v, side="right") - np.searchsorted(nonzero, v, side="left")
+                else:
+                    greater, equal = nnz, n_genes - nnz
+                ranks[j] = greater + (equal + 1) / 2
+            # As in UCell 2.x (u_stat): ranks >= maxRank count as maxRank, and the
+            # score is scaled so a cell expressing none of the genes scores 0.
+            ranks = np.minimum(ranks, max_rank)
+            rank_sum_min = n * (n + 1) / 2
+            scores[name][i] = 1 - (ranks.sum() - rank_sum_min) / (n * max_rank - rank_sum_min)
+    return scores
 
 
 def gene_set(markers, name, var_names):
@@ -64,7 +115,11 @@ def main():
     parser.add_argument("--h5", required=True, help="Cell Ranger sample_filtered_feature_bc_matrix.h5")
     parser.add_argument("--vdj", required=True, help="vdj_cell_classes.tsv from vdj_compare.py")
     parser.add_argument("--markers", required=True)
-    parser.add_argument("--score-min", type=float, default=0.1)
+    parser.add_argument("--score-method", choices=["ucell", "scanpy"], default="ucell")
+    parser.add_argument("--max-rank", type=int, default=None,
+                        help="UCell maxRank; default: median detected genes per QC-pass cell")
+    parser.add_argument("--score-min", type=float, default=None,
+                        help="score floor / fallback threshold; default 0.2 (ucell) or 0.1 (scanpy)")
     parser.add_argument("--min-markers", type=int, default=3,
                         help="distinct marker genes of a set that must be detected")
     parser.add_argument("--min-genes", type=int, default=200)
@@ -72,6 +127,8 @@ def main():
     parser.add_argument("--outdir", default=".")
     args = parser.parse_args()
     out = Path(args.outdir)
+    if args.score_min is None:
+        args.score_min = 0.2 if args.score_method == "ucell" else 0.1
 
     adata = sc.read_10x_h5(args.h5, gex_only=True)
     adata.var_names_make_unique()
@@ -98,14 +155,32 @@ def main():
         genes, _ = gene_set(markers, name, adata.var_names)
         adata.obs[f"{name}_markers_detected"] = np.asarray((adata[:, genes].X > 0).sum(axis=1)).ravel()
 
+    summary = []
+    if args.score_method == "ucell":
+        detected = adata.obs.loc[adata.obs["qc_pass"], "n_genes_by_counts"]
+        max_rank = args.max_rank or int(round(detected.median()))
+        max_rank_low = int(round(detected.quantile(0.10)))
+        sig_cols = {name: [adata.var_names.get_loc(g) for g in gene_set(markers, name, adata.var_names)[0]]
+                    for name in ["B", "T"]}
+        if max(len(c) for c in sig_cols.values()) >= max_rank_low:
+            raise SystemExit("a signature is longer than the 10th percentile of detected genes")
+        main_scores = ucell(adata.X, sig_cols, max_rank)
+        low_scores = ucell(adata.X, sig_cols, max_rank_low)
+        for name in ["B", "T"]:
+            adata.obs[f"{name}_score"] = main_scores[name]
+            rho = pd.Series(main_scores[name]).corr(pd.Series(low_scores[name]), method="spearman")
+            summary.append({"metric": f"{name}_spearman_maxrank_{max_rank}_vs_{max_rank_low}", "value": f"{rho:.4f}"})
+        summary = [{"metric": "score_method", "value": "UCell"},
+                   {"metric": "max_rank", "value": f"{max_rank} (median detected genes; 10th pct {max_rank_low})"}] + summary
+
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
 
-    summary = []
     thresholds = {}
     for name in ["B", "T"]:
         genes, missing = gene_set(markers, name, adata.var_names)
-        sc.tl.score_genes(adata, genes, score_name=f"{name}_score", random_state=0)
+        if args.score_method == "scanpy":
+            sc.tl.score_genes(adata, genes, score_name=f"{name}_score", random_state=0)
         ref = adata.obs.loc[adata.obs["qc_pass"], f"{name}_score"]
         thresholds[name], method = mixture_threshold(ref, args.score_min)
         adata.obs[f"{name}_pos"] = (adata.obs[f"{name}_score"] > thresholds[name]) & (

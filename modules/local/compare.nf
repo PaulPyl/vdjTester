@@ -49,7 +49,9 @@ process EXPRESSION_CHECK {
         --h5 ${filtered_h5} \\
         --vdj ${cell_classes} \\
         --markers ${markers} \\
-        --score-min ${params.score_min} \\
+        --score-method ${params.score_method} \\
+        ${params.max_rank ? "--max-rank ${params.max_rank}" : ''} \\
+        ${params.score_min != null ? "--score-min ${params.score_min}" : ''} \\
         --min-markers ${params.min_markers} \\
         --outdir .
     """
