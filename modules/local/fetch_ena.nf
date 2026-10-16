@@ -12,6 +12,11 @@
 // File URLs and MD5s come from the ENA portal API. When the API is down (it
 // returned HTTP 500 and timeouts on 2026-10-16), the URL is built from ENA's
 // fixed layout and the MD5 check is skipped, which is logged in fetch.log.
+//
+// Raw files are downloaded into <store_dir>/fastq/.downloads rather than the work
+// dir, so a failed or killed attempt resumes where it stopped (a GEX library is
+// 6-13 GB, and ENA served ~1 MB/s per file on 2026-10-16). A cached file whose
+// MD5 already matches is not fetched again; one that mismatches is deleted.
 process FETCH_ENA {
     tag "${fastq_id}"
     label 'process_single'
@@ -27,7 +32,7 @@ process FETCH_ENA {
     """
     fetch() {  # url, output file; resumes after dropped connections
         for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            curl -fSL --retry 5 --retry-all-errors -C - -o "\$2" "\$1" && return 0
+            curl -fsSL --retry 5 --retry-all-errors -C - -o "\$2" "\$1" && return 0
             echo "download of \$2 interrupted (attempt \$attempt), resuming" >&2
             sleep 15
         done
@@ -49,8 +54,9 @@ process FETCH_ENA {
         echo "ftp.sra.ebi.ac.uk/vol1/fastq/\${acc:0:6}/\${sub}\${acc}"
     }
 
+    cache=${params.store_dir}/fastq/.downloads
     out=${fastq_id}.partial
-    mkdir -p "\$out"
+    mkdir -p "\$out" "\$cache"
     lane=0
     for run in ${runs.join(' ')}; do
         lane=\$((lane + 1))
@@ -69,12 +75,19 @@ process FETCH_ENA {
         i=0
         for url in \$urls; do
             i=\$((i + 1))
-            fetch "https://\$url" "\$run.\$i.fastq.gz"
-            if [ \$# -ge \$i ]; then
-                expected=\$(eval echo "\\\${\$i}")
-                actual=\$(md5_of "\$run.\$i.fastq.gz")
+            f="\$cache/\$run.\$i.fastq.gz"
+            expected=""
+            [ \$# -ge \$i ] && expected=\$(eval echo "\\\${\$i}")
+            if [ -n "\$expected" ] && [ -s "\$f" ] && [ "\$(md5_of "\$f")" = "\$expected" ]; then
+                echo "\$run file \$i: already in the download cache" >> "\$out/fetch.log"
+                continue
+            fi
+            fetch "https://\$url" "\$f"
+            if [ -n "\$expected" ]; then
+                actual=\$(md5_of "\$f")
                 if [ "\$actual" != "\$expected" ]; then
                     echo "md5 mismatch for \$run file \$i: \$actual vs \$expected" >&2
+                    rm -f "\$f"
                     exit 1
                 fi
             fi
@@ -84,19 +97,22 @@ process FETCH_ENA {
             exit 1
         fi
 
-        tso1=\$(tso_pct "\$run.1.fastq.gz"); tso2=\$(tso_pct "\$run.2.fastq.gz")
+        tso1=\$(tso_pct "\$cache/\$run.1.fastq.gz"); tso2=\$(tso_pct "\$cache/\$run.2.fastq.gz")
         if [ "\$tso1" -ge 20 ] && [ "\$tso2" -lt 5 ]; then
-            r1=\$run.1.fastq.gz; r2=\$run.2.fastq.gz
+            r1=\$cache/\$run.1.fastq.gz; r2=\$cache/\$run.2.fastq.gz
         elif [ "\$tso2" -ge 20 ] && [ "\$tso1" -lt 5 ]; then
-            r1=\$run.2.fastq.gz; r2=\$run.1.fastq.gz
+            r1=\$cache/\$run.2.fastq.gz; r2=\$cache/\$run.1.fastq.gz
         else
             echo "\$run: cannot tell R1 from R2 (TSO core in bases 23-42: \$tso1 % / \$tso2 %)" >&2
             exit 1
         fi
-        echo "\$run (lane \$lane): TSO core in bases 23-42 of \$tso1 % / \$tso2 % of reads, R1 = \$r1" >> "\$out/fetch.log"
-        mv "\$r1" "\$out/${fastq_id}_S1_L00\${lane}_R1_001.fastq.gz"
-        mv "\$r2" "\$out/${fastq_id}_S1_L00\${lane}_R2_001.fastq.gz"
+        echo "\$run (lane \$lane): TSO core in bases 23-42 of \$tso1 % / \$tso2 % of reads, R1 = \$(basename "\$r1")" >> "\$out/fetch.log"
+        # Moved out of the cache only once every lane is in, so a failure in a
+        # later lane does not lose the earlier ones.
+        echo "\$r1 \$out/${fastq_id}_S1_L00\${lane}_R1_001.fastq.gz" >> moves.txt
+        echo "\$r2 \$out/${fastq_id}_S1_L00\${lane}_R2_001.fastq.gz" >> moves.txt
     done
+    while read -r src dst; do mv "\$src" "\$dst"; done < moves.txt
     mv "\$out" ${fastq_id}
     """
 
