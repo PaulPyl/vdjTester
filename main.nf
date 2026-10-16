@@ -20,6 +20,7 @@ include { FETCH_FILES      } from './modules/local/fetch_files'
 include { COMPARE_VDJ      } from './modules/local/compare'
 include { EXPRESSION_CHECK } from './modules/local/compare'
 include { CLONE_TRACKING   } from './modules/local/compare'
+include { REPORT           } from './modules/local/compare'
 
 // Directory name a 10x tarball unpacks to.
 def tarName(String url) {
@@ -188,4 +189,31 @@ workflow {
         .groupTuple()
         .map { key, sids, tps, calls -> tuple(key.toString(), sids, tps, calls) }
     CLONE_TRACKING(ch_tracking)
+
+    // --- HTML report ------------------------------------------------------------------
+    ch_samples_tsv = ch_meta
+        .map { sid, meta -> "${sid}\t${meta.patient}\t${meta.timepoint}" }
+        .collectFile(name: 'samples.tsv', newLine: true, sort: true, seed: "sample_id\tpatient\ttimepoint")
+    ch_run_info = CELLRANGER_MULTI.out.versions.first()
+        .map { f ->
+            [
+                ['run_name', workflow.runName], ['date', new Date().format('yyyy-MM-dd')],
+                ['nextflow', nextflow.version.toString()], ['profile', workflow.profile],
+                ['input', params.samplesheet ?: "10x example ${params.sample_id}"],
+                ['cellranger', f.text.trim()],
+                ['immcantation', params.immcantation_container],
+                ['mixcr', params.skip_mixcr ? 'skipped' : params.mixcr_container],
+                ['trust4', params.skip_trust4 ? 'skipped' : "${params.trust4_container} (germlines ${params.trust4_ref_version}; on GEX: ${params.trust4_gex})"],
+                ['trust4 filter', "min UMIs ${params.trust4_min_umis} (GEX ${params.trust4_gex_min_umis}), min fraction ${params.trust4_min_frac}"],
+                ['expression scores', "${params.score_method}, min markers ${params.min_markers}"],
+                ['python container', params.python_container],
+            ].collect { kv -> "${kv[0]}\t${kv[1]}" }.join('\n')
+        }
+        .collectFile(name: 'run_info.tsv', newLine: true, seed: "key\tvalue")
+    ch_metrics = CELLRANGER_MULTI.out.metrics
+        .collectFile { sid, f -> ["${sid}.metrics_summary.csv", f.text] }
+    ch_report_data = COMPARE_VDJ.out.report.flatten()
+        .mix(EXPRESSION_CHECK.out.report.flatten(), CLONE_TRACKING.out.report.flatten(), ch_metrics, ch_samples_tsv, ch_run_info)
+        .collect()
+    REPORT(ch_report_data, file("${projectDir}/assets/report/vdjtester_report.qmd", checkIfExists: true))
 }

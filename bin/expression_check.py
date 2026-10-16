@@ -204,9 +204,25 @@ def main():
         default="neither",
     )
 
+    # UMAP for the report. Immunoglobulin and TCR genes are kept out of the variable
+    # genes, so a dominant clone's own transcripts do not shape the embedding.
+    adata.obs["umap1"] = np.nan
+    adata.obs["umap2"] = np.nan
+    if adata.n_obs >= 50:
+        emb = adata.copy()
+        receptor = emb.var_names.str.match(r"^(IG[HKL][VDJC]|TR[ABDG][VDJC])")
+        sc.pp.highly_variable_genes(emb, n_top_genes=2000)
+        emb.var.loc[receptor, "highly_variable"] = False
+        sc.pp.pca(emb, n_comps=30, mask_var="highly_variable", random_state=0)
+        sc.pp.neighbors(emb, n_neighbors=15, random_state=0)
+        sc.tl.umap(emb, random_state=0)
+        adata.obs[["umap1", "umap2"]] = emb.obsm["X_umap"]
+        summary.append({"metric": "umap", "value": "2000 HVGs without IG/TR genes, 30 PCs, 15 neighbours"})
+
     cells = adata.obs[[
         "qc_pass", "n_genes_by_counts", "pct_counts_mt", "doublet_score", "predicted_doublet",
         "B_score", "T_score", "B_markers_detected", "T_markers_detected", "Ig_const_log_expr", "TR_const_log_expr", "expr_class",
+        "umap1", "umap2",
     ]].rename_axis("cell_id").reset_index()
     cells.to_csv(out / "expression_cells.tsv", sep="\t", index=False, float_format="%.4f")
 

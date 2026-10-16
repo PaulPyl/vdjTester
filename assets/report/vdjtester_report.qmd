@@ -1,0 +1,456 @@
+---
+title: "vdjTester report"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    theme: cosmo
+    fig-width: 10
+    fig-height: 4.5
+    page-layout: full
+execute:
+  echo: false
+  warning: false
+jupyter: python3
+---
+
+```{python}
+#| tags: [parameters]
+data_dir = "."
+```
+
+```{python}
+import glob
+import itertools
+import re
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from IPython.display import Markdown, display
+
+D = Path(data_dir)
+TOOLS = ["cellranger", "immcantation", "mixcr", "trust4", "trust4_gex"]
+COLORS = dict(zip(TOOLS, ["#4C72B0", "#8C8C8C", "#DD8452", "#55A868", "#8172B3"]))
+LABELS = {"cellranger": "Cell Ranger", "immcantation": "Immcantation", "mixcr": "MiXCR",
+          "trust4": "TRUST4", "trust4_gex": "TRUST4 (GEX reads)"}
+EXPR_COLORS = {"B": "#4C72B0", "T": "#DD8452", "both_singlet": "#C44E52", "both_doublet": "#8C613C",
+               "neither": "#CCCCCC"}
+VDJ_COLORS = {"BCR": "#4C72B0", "TCR": "#DD8452", "both": "#C44E52", "none": "#E5E5E5"}
+plt.rcParams.update({"axes.spines.top": False, "axes.spines.right": False, "font.size": 9})
+
+samples = pd.read_csv(D / "samples.tsv", sep="\t").sort_values(["patient", "timepoint"])
+run_info = pd.read_csv(D / "run_info.tsv", sep="\t") if (D / "run_info.tsv").exists() else pd.DataFrame()
+
+
+def per_sample(suffix, sep="\t"):
+    """Concatenate <sample_id>.<suffix> for all samples, with a sample_id column."""
+    frames = []
+    for sid in samples["sample_id"]:
+        f = D / f"{sid}.{suffix}"
+        if f.exists() and f.stat().st_size > 0:
+            df = pd.read_csv(f, sep=sep, dtype={"cell_id": str})
+            df.insert(0, "sample_id", sid)
+            frames.append(df)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def per_patient(suffix):
+    frames = []
+    for pid in samples["patient"].unique():
+        f = D / f"{pid}.{suffix}"
+        if f.exists() and f.stat().st_size > 0:
+            df = pd.read_csv(f, sep="\t")
+            df.insert(0, "patient", pid)
+            frames.append(df)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def tools_in(df, col="tool"):
+    present = set(df[col]) if len(df) else set()
+    return [t for t in TOOLS if t in present]
+
+
+def show(df, floatfmt=".3f"):
+    display(Markdown(df.to_markdown(index=False, floatfmt=floatfmt)))
+
+
+summary = per_sample("vdj_tool_summary.tsv")
+pairwise = per_sample("vdj_pairwise_agreement.tsv")
+vdis = per_sample("vdj_v_disagreements.tsv")
+classes = per_sample("vdj_cell_classes.tsv")
+expr_cells = per_sample("expression_cells.tsv")
+expr_summary = per_sample("expression_summary.tsv")
+expr_vs_vdj = per_sample("expression_vs_vdj.tsv")
+metrics = per_sample("metrics_summary.csv", sep=",")
+clonality = per_patient("clonality.tsv")
+tracking = per_patient("clone_tracking.tsv")
+overlap = per_patient("timepoint_overlap.tsv")
+dominant = per_patient("dominant_clone_agreement.tsv")
+tools = tools_in(summary)
+```
+
+## Run overview
+
+```{python}
+n_pat = samples["patient"].nunique()
+display(Markdown(
+    f"**{len(samples)} samples** from **{n_pat} patient{'s' if n_pat > 1 else ''}**, "
+    f"compared across **{len(tools)} methods**: {', '.join(LABELS[t] for t in tools)}."
+))
+if len(run_info):
+    show(run_info.rename(columns={"key": "setting"}))
+```
+
+### Cell Ranger metrics
+
+```{python}
+if len(metrics):
+    m = metrics[metrics["Grouped By"].isna()].copy()
+    m["metric"] = m["Library Type"] + ": " + m["Metric Name"]
+    keep = ["Gene Expression: Cells", "Gene Expression: Median genes per cell",
+            "Gene Expression: Median UMI counts per cell",
+            "VDJ B: VDJ cells", "VDJ B: Cells with productive V-J spanning pair", "VDJ B: Median IGH UMIs per Cell",
+            "VDJ T: VDJ cells", "VDJ T: Cells with productive V-J spanning pair", "VDJ T: Median TRB UMIs per Cell"]
+    wide = m[m["metric"].isin(keep)].pivot_table(index="sample_id", columns="metric", values="Metric Value", aggfunc="first")
+    wide = wide[[k for k in keep if k in wide.columns]].reset_index()
+    wide = samples.merge(wide, on="sample_id", how="left")
+    show(wide, floatfmt=".3g")
+```
+
+## Cell recovery per method
+
+Cells with at least one productive BCR or TCR chain. A cell counts for a receptor if
+the method reports that receptor in it, alone or together with the other.
+
+```{python}
+#| fig-height: 3.6
+if len(summary):
+    s = summary.copy()
+    s["BCR cells"] = s["BCR_only"] + s["BCR_and_TCR"]
+    s["TCR cells"] = s["TCR_only"] + s["BCR_and_TCR"]
+    fig, axes = plt.subplots(1, 2, figsize=(11, 3.6))
+    sids = list(samples["sample_id"])
+    w = 0.8 / len(tools)
+    for ax, col in zip(axes, ["BCR cells", "TCR cells"]):
+        for i, t in enumerate(tools):
+            v = s[s["tool"] == t].set_index("sample_id").reindex(sids)[col]
+            ax.bar(np.arange(len(sids)) + i * w, v, w, color=COLORS[t], label=LABELS[t])
+        ax.set_xticks(np.arange(len(sids)) + w * (len(tools) - 1) / 2, sids)
+        ax.set_title(col)
+    axes[1].legend(frameon=False, bbox_to_anchor=(1, 1), loc="upper left")
+    fig.tight_layout()
+    plt.show()
+```
+
+```{python}
+if len(summary):
+    t = summary.copy()
+    t["BCR paired %"] = 100 * t["BCR_paired"] / (t["BCR_only"] + t["BCR_and_TCR"]).replace(0, np.nan)
+    t["TCR paired %"] = 100 * t["TCR_paired"] / (t["TCR_only"] + t["BCR_and_TCR"]).replace(0, np.nan)
+    t["tool"] = t["tool"].map(LABELS)
+    show(t[["sample_id", "tool", "cells_with_vdj", "BCR_only", "TCR_only", "BCR_and_TCR",
+            "BCR paired %", "TCR paired %", "multiple_IGH"]], floatfmt=".1f")
+```
+
+### Which methods find which cells
+
+Intersections of the cell sets, pooled over samples (UpSet-style; the 12 largest).
+Cells outside Cell Ranger's GEX matrix are counted for the methods that report them
+(only MiXCR has its own cell calling; TRUST4 is restricted to the GEX cells).
+
+```{python}
+def upset(receptor):
+    c = classes[classes["vdj_class"].isin([receptor, "both"])]
+    sets = c.groupby(["sample_id", "cell_id"])["tool"].agg(lambda x: tuple(t for t in tools if t in set(x)))
+    counts = sets.value_counts().head(12)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 4.5), height_ratios=[3, 1.6], sharex=True)
+    x = np.arange(len(counts))
+    ax1.bar(x, counts.values, color="#555555")
+    for xi, v in zip(x, counts.values):
+        ax1.text(xi, v, f"{v}", ha="center", va="bottom", fontsize=7)
+    ax1.set_ylabel("cells")
+    ax1.set_title(f"{receptor}: cells per combination of methods")
+    for j, t in enumerate(tools):
+        member = [t in combo for combo in counts.index]
+        ax2.scatter(x, [j] * len(x), c=[COLORS[t] if m else "#E5E5E5" for m in member], s=40)
+    ax2.set_yticks(range(len(tools)), [LABELS[t] for t in tools])
+    ax2.set_xticks([])
+    ax2.spines[["left", "bottom"]].set_visible(False)
+    fig.tight_layout()
+    plt.show()
+
+if len(classes):
+    for receptor in ["BCR", "TCR"]:
+        upset(receptor)
+```
+
+```{python}
+if len(expr_vs_vdj) and "not_in_gex" in set(expr_vs_vdj["expr_class"]):
+    n = expr_vs_vdj[expr_vs_vdj["expr_class"] == "not_in_gex"].drop(columns=["expr_class"])
+    n = n.groupby("tool").sum(numeric_only=True).reset_index()
+    n["tool"] = n["tool"].map(LABELS)
+    display(Markdown("Barcodes with a VDJ call but **not among Cell Ranger's GEX cells**, summed over samples:"))
+    show(n, floatfmt=".0f")
+```
+
+## Agreement between methods
+
+For every pair of methods, on the cells both call for a locus, using each method's top
+chain (most UMIs). V-gene agreement is shown at increasing tolerance:
+
+- **V same**: identical first call. **V tied**: overlapping tied calls (IgBLAST lists
+  equally good genes).
+- **V paralog**: the same after collapsing duplicated genes (IGKV1D-39 = IGKV1-39,
+  IGHV1-69D = IGHV1-69, TRAV14/DV4 = TRAV14).
+- **V germline**: paralog, or germline V sequences ≥ 97 % identical (IMGT).
+- **all**: V (germline level), J and CDR3 all agree.
+
+Values are pooled over samples, weighted by the number of shared cells.
+
+```{python}
+METRICS = [("v_agree", "V same"), ("v_compatible", "V tied"), ("v_paralog", "V paralog"),
+           ("v_germline", "V germline"), ("j_agree", "J"), ("cdr3_agree", "CDR3"), ("all_germline", "all")]
+
+
+def pooled(df):
+    out = []
+    for (a, b, locus), g in df.groupby(["tool_a", "tool_b", "locus"]):
+        w = g["cells_both"]
+        if w.sum() == 0:
+            continue
+        row = {"pair": f"{LABELS[a]} / {LABELS[b]}", "locus": locus, "cells": int(w.sum())}
+        for col, label in METRICS:
+            if col in g:
+                row[label] = (g[col] * w).sum() / w.sum()
+        out.append(row)
+    return pd.DataFrame(out)
+
+
+if len(pairwise):
+    pool = pooled(pairwise)
+    loci = [l for l in ["IGH", "IGK", "IGL", "TRA", "TRB"] if l in set(pool["locus"])]
+    fig, axes = plt.subplots(1, len(loci), figsize=(3.3 * len(loci), 0.32 * pool["pair"].nunique() + 1.6), sharey=True)
+    pairs = sorted(pool["pair"].unique())
+    labels = [l for _, l in METRICS]
+    for ax, locus in zip(np.atleast_1d(axes), loci):
+        sub = pool[pool["locus"] == locus].set_index("pair").reindex(pairs)
+        mat = sub[labels].to_numpy(dtype=float)
+        ax.imshow(mat, vmin=0.7, vmax=1.0, cmap="viridis", aspect="auto")
+        for (i, j), v in np.ndenumerate(mat):
+            if v == v:
+                ax.text(j, i, f"{100 * v:.0f}", ha="center", va="center", fontsize=6.5,
+                        color="white" if v < 0.9 else "black")
+        ax.set_xticks(range(len(labels)), labels, rotation=60, ha="right")
+        ax.set_yticks(range(len(pairs)), pairs)
+        ax.set_title(locus)
+    fig.suptitle("Agreement (%) on shared cells; colour scale 70-100 %", y=1.0)
+    fig.tight_layout()
+    plt.show()
+```
+
+### V-gene disagreements that remain
+
+Disagreements on the same cell and locus that neither duplicate collapsing nor germline
+identity explains, pooled over samples. These are the ones worth a closer look.
+
+```{python}
+if len(vdis):
+    real = vdis[vdis["level"] == "different"]
+    top = (real.groupby(["tool_a", "tool_b", "locus", "v_gene_a", "v_gene_b"], as_index=False)
+           .agg(cells=("cells", "sum"), germline_identity=("germline_identity", "first"))
+           .sort_values("cells", ascending=False).head(15))
+    top["tool_a"] = top["tool_a"].map(LABELS)
+    top["tool_b"] = top["tool_b"].map(LABELS)
+    show(top)
+    lev = vdis.groupby("level")["cells"].sum()
+    display(Markdown("All V-gene disagreements by explanation (cells, pooled): " +
+                     ", ".join(f"**{k}** {int(v)}" for k, v in lev.items())))
+```
+
+## Expression vs VDJ
+
+B and T identity from gene expression (UCell scores of non-receptor markers; see
+Methods), compared with each method's receptor calls. The UMAP is built without
+immunoglobulin and TCR genes, so it does not reflect the clonotype directly.
+
+::: {.panel-tabset}
+
+```{python}
+#| output: asis
+def summary_value(sid, metric):
+    v = expr_summary[(expr_summary["sample_id"] == sid) & (expr_summary["metric"] == metric)]["value"]
+    return v.iloc[0] if len(v) else ""
+
+
+def threshold(sid, name):
+    v = summary_value(sid, f"{name}_threshold")
+    return float(str(v).split()[0]) if v else np.nan
+
+
+for sid in samples["sample_id"]:
+    print(f"\n## {sid}\n")
+    e = expr_cells[expr_cells["sample_id"] == sid]
+    if not len(e):
+        print("No expression check output.\n")
+        continue
+    counts = e["expr_class"].value_counts()
+    print(", ".join(f"**{k}** {counts.get(k, 0)}" for k in EXPR_COLORS) +
+          f" (of {len(e)} cells). Predicted doublets: {summary_value(sid, 'predicted_doublets')} "
+          f"(threshold {summary_value(sid, 'doublet_threshold')}). UCell maxRank {summary_value(sid, 'max_rank')}.\n")
+
+    if e["umap1"].notna().any():
+        cls = classes[classes["sample_id"] == sid]
+        present = [t for t in tools if t in set(cls["tool"])]
+        ncol = 1 + len(present)
+        fig, axes = plt.subplots(1, ncol, figsize=(3.1 * ncol, 3.2))
+        ax = axes[0]
+        for k, col in EXPR_COLORS.items():
+            sel = e["expr_class"] == k
+            ax.scatter(e.loc[sel, "umap1"], e.loc[sel, "umap2"], s=2, c=col, label=k, rasterized=True)
+        ax.set_title("expression class")
+        ax.legend(markerscale=4, fontsize=6, frameon=False, loc="best")
+        for ax, t in zip(axes[1:], present):
+            v = cls[cls["tool"] == t].set_index("cell_id")["vdj_class"]
+            cl = e["cell_id"].map(v).fillna("none")
+            for k in ["none", "BCR", "TCR", "both"]:
+                sel = cl == k
+                ax.scatter(e.loc[sel, "umap1"], e.loc[sel, "umap2"], s=2, c=VDJ_COLORS[k], label=k, rasterized=True)
+            ax.set_title(LABELS[t])
+        axes[-1].legend(markerscale=4, fontsize=6, frameon=False, loc="best")
+        for ax in axes:
+            ax.set_xticks([]); ax.set_yticks([])
+            ax.spines[["left", "bottom"]].set_visible(False)
+        fig.tight_layout()
+        plt.show()
+
+    fig, axes = plt.subplots(1, 2, figsize=(8, 2.6))
+    for ax, name in zip(axes, ["B", "T"]):
+        ax.hist(e[f"{name}_score"], bins=60, color="#777777")
+        ax.axvline(threshold(sid, name), color="#C44E52")
+        ax.set_title(f"{name} score (UCell); threshold {summary_value(sid, f'{name}_threshold')}", fontsize=8)
+    fig.tight_layout()
+    plt.show()
+
+    x = expr_vs_vdj[expr_vs_vdj["sample_id"] == sid].drop(columns=["sample_id"]).copy()
+    if len(x):
+        x["tool"] = x["tool"].map(LABELS)
+        cols = ["tool", "expr_class"] + [c for c in ["BCR", "TCR", "both", "none"] if c in x.columns]
+        print("\nCells by expression class (rows) and VDJ class per method (columns):\n")
+        print(x[cols].to_markdown(index=False, floatfmt=".0f"))
+        print()
+```
+
+:::
+
+## Clonal structure per sample
+
+Clonotypes use the CDR3 only (heavy chain for BCR, beta chain for TCR), which is
+robust to the methods' different V-gene naming. *Top-1* is the largest clone's share of
+cells; *Shannon clonality* is 1 - H / log N (0 = all clones equal, 1 = one clone).
+
+```{python}
+if len(clonality):
+    c = clonality[clonality["clonotype_def"] == "cdr3"].copy()
+    c["tool"] = pd.Categorical(c["tool"].map(LABELS), [LABELS[t] for t in tools])
+    wide = c.pivot_table(index=["sample_id", "receptor"], columns="tool", values="top1_share", observed=False).reset_index()
+    display(Markdown("**Largest clone's share of cells**"))
+    show(wide)
+    wide = c.pivot_table(index=["sample_id", "receptor"], columns="tool", values="shannon_clonality", observed=False).reset_index()
+    display(Markdown("**Shannon clonality**"))
+    show(wide)
+```
+
+```{python}
+if len(dominant):
+    d = dominant[dominant["clonotype_def"] == "cdr3"].copy()
+    agree = d.groupby(["sample_id", "receptor"]).agg(
+        dominant_clone=("dominant_clonotype", lambda x: x.mode().iloc[0]),
+        all_methods_agree=("all_tools_agree", "first"),
+        share_range=("share", lambda x: f"{x.min():.2f}-{x.max():.2f}"),
+        max_tied=("tied_for_largest", "max"),
+    ).reset_index()
+    display(Markdown("**Dominant clone and whether every method picks the same one** "
+                     "(*max_tied* > 1 means the largest clone is tied, so agreement means little)"))
+    show(agree)
+```
+
+## Longitudinal: clones over time
+
+```{python}
+#| output: asis
+multi = samples.groupby("patient")["timepoint"].nunique()
+multi = list(multi[multi > 1].index)
+if not multi:
+    print("No patient has more than one timepoint.\n")
+for pid in multi:
+    print(f"\n### {pid}\n")
+    tr = tracking[(tracking["patient"] == pid) & (tracking["clonotype_def"] == "cdr3")]
+    for receptor in ["BCR", "TCR"]:
+        sub = tr[tr["receptor"] == receptor]
+        if not len(sub):
+            continue
+        present = [t for t in tools if t in set(sub["tool"])]
+        top = (sub.groupby("clonotype")["share"].max().sort_values(ascending=False).head(6).index)
+        palette = dict(zip(top, plt.cm.tab10.colors))
+        fig, axes = plt.subplots(1, len(present), figsize=(2.8 * len(present), 2.8), sharey=True)
+        for ax, t in zip(np.atleast_1d(axes), present):
+            g = sub[sub["tool"] == t]
+            for clone in top:
+                h = g[g["clonotype"] == clone].sort_values("timepoint")
+                if len(h):
+                    ax.plot(h["timepoint"], h["share"], marker="o", color=palette[clone], label=clone)
+            ax.set_title(LABELS[t])
+            ax.set_xticks(sorted(sub["timepoint"].unique()))
+            ax.set_xlabel("timepoint")
+        np.atleast_1d(axes)[0].set_ylabel(f"share of {receptor} cells")
+        np.atleast_1d(axes)[-1].legend(fontsize=6, frameon=False, bbox_to_anchor=(1, 1), loc="upper left")
+        fig.suptitle(f"{pid}: {receptor}, the 6 largest CDR3 clonotypes", fontsize=9)
+        fig.tight_layout()
+        plt.show()
+
+    ov = overlap[(overlap["patient"] == pid) & (overlap["clonotype_def"] == "cdr3")].copy()
+    if len(ov):
+        ov["tool"] = ov["tool"].map(LABELS)
+        ov["timepoints"] = ov["timepoint_a"].astype(str) + "-" + ov["timepoint_b"].astype(str)
+        wide = ov.pivot_table(index=["receptor", "timepoints"], columns="tool", values="morisita_horn").reset_index()
+        print("\nMorisita-Horn overlap between timepoints (1 = same clone distribution):\n")
+        print(wide.to_markdown(index=False, floatfmt=".3f"))
+        print()
+```
+
+## Methods and caveats
+
+**Methods compared.**
+*Cell Ranger multi* assembles contigs per barcode and annotates them against 10x's
+Ensembl-based VDJ reference; in `multi` its cell calling also uses the GEX data.
+*Immcantation* (`changeo-10x`) re-annotates Cell Ranger's contigs with IgBLAST and IMGT
+germlines, so it is not an independent assembly. *MiXCR* (`10x-sc-xcr-vdj`) aligns every
+read to germlines, corrects barcodes and UMIs, assembles clonotypes and groups them by
+cell with its own cell calling. *TRUST4* extracts candidate reads by k-mer matching and
+assembles per barcode; it has no cell calling. *TRUST4 (GEX reads)* runs on the gene
+expression library, without VDJ enrichment.
+
+**Harmonisation.** Barcodes lose the `-1` suffix; genes keep the first call without the
+allele; CDR3s are compared without the conserved C and W/F. Each method's top chain per
+cell and locus (most UMIs) is its call. TRUST4 is restricted to Cell Ranger's GEX cells
+and filtered for ambient chains (≥ 3 UMIs and ≥ 10 % of the barcode's strongest chain;
+on GEX reads ≥ 1 UMI and the same relative rule).
+
+**Expression classes.** UCell scores of B markers (CD79A, CD79B, MS4A1, CD19, CD22,
+PAX5, BANK1) and T markers (CD3D/E/G, CD2, CD247, LCK), with maxRank set to the median
+number of detected genes. A cell is positive when its score clears a threshold (mixture
+model, floored at 0.2) *and* at least 3 markers of the set are detected. *both* cells are
+split by Scrublet into doublets and singlets (candidate B/T hybrids).
+
+**Known caveats.**
+
+- In CLL, CD22, CD79B and CD20 (MS4A1) are expressed at low levels, so the B-marker set
+  under-calls CLL cells: many BCR+ cells fall into *neither*.
+- MiXCR verifies its licence online; on clusters whose compute nodes have no internet
+  (PDC Dardel) it has to run elsewhere.
+- V-gene germline identity uses the lowest IMGT allele of each gene; a 97 % threshold
+  merges close paralogs (e.g. IGHV3-30/3-33) but keeps IGHV4-34 and IGHV4-4 apart.

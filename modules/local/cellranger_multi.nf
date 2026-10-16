@@ -18,8 +18,9 @@ process CELLRANGER_MULTI {
     tuple val(sample_id), path('per_sample_outs/sample_filtered_feature_bc_matrix.h5'), emit: filtered_h5
     tuple val(sample_id), path("cellranger.${sample_id}.*.csv"), emit: calls
     path 'per_sample_outs/{web_summary.html,metrics_summary.csv}', emit: summary
+    tuple val(sample_id), path('per_sample_outs/metrics_summary.csv'), emit: metrics
     path 'multi_config.csv'
-    path 'versions.txt'
+    path 'versions.txt', emit: versions
 
     script:
     def cr_path = params.cellranger_dir ? "export PATH=${params.cellranger_dir}:\$PATH" : ''

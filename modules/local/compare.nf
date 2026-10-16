@@ -10,11 +10,9 @@ process COMPARE_VDJ {
     path germline_ref
 
     output:
-    tuple val(sample_id), path('vdj_cell_classes.tsv'), emit: cell_classes
-    tuple val(sample_id), path('vdj_calls_long.tsv'), emit: calls_long
-    path 'vdj_tool_summary.tsv'
-    path 'vdj_pairwise_agreement.tsv'
-    path 'vdj_v_disagreements.tsv'
+    tuple val(sample_id), path("${sample_id}.vdj_cell_classes.tsv"), emit: cell_classes
+    tuple val(sample_id), path("${sample_id}.vdj_calls_long.tsv"), emit: calls_long
+    path "${sample_id}.vdj_{tool_summary,pairwise_agreement,v_disagreements,cell_classes}.tsv", emit: report
 
     script:
     """
@@ -24,11 +22,14 @@ process COMPARE_VDJ {
         --trust4-min-umis ${params.trust4_min_umis} --trust4-min-frac ${params.trust4_min_frac} \\
         --trust4-gex-min-umis ${params.trust4_gex_min_umis} \\
         --outdir . ${calls}
+    for f in vdj_*.tsv; do mv "\$f" "${sample_id}.\$f"; done
     """
 
     stub:
     """
-    touch vdj_cell_classes.tsv vdj_calls_long.tsv vdj_tool_summary.tsv vdj_pairwise_agreement.tsv vdj_v_disagreements.tsv
+    for f in vdj_cell_classes vdj_calls_long vdj_tool_summary vdj_pairwise_agreement vdj_v_disagreements; do
+        touch ${sample_id}.\$f.tsv
+    done
     """
 }
 
@@ -43,10 +44,8 @@ process EXPRESSION_CHECK {
     path markers
 
     output:
-    path 'expression_cells.tsv'
-    path 'expression_vs_vdj.tsv'
-    path 'expression_summary.tsv'
-    path 'marker_scores.png'
+    path "${sample_id}.{expression_cells,expression_vs_vdj,expression_summary}.tsv", emit: report
+    path "${sample_id}.marker_scores.png"
 
     script:
     """
@@ -60,11 +59,12 @@ process EXPRESSION_CHECK {
         ${params.score_min != null ? "--score-min ${params.score_min}" : ''} \\
         --min-markers ${params.min_markers} \\
         --outdir .
+    for f in expression_*.tsv marker_scores.png; do mv "\$f" "${sample_id}.\$f"; done
     """
 
     stub:
     """
-    touch expression_cells.tsv expression_vs_vdj.tsv expression_summary.tsv marker_scores.png
+    touch ${sample_id}.expression_cells.tsv ${sample_id}.expression_vs_vdj.tsv ${sample_id}.expression_summary.tsv ${sample_id}.marker_scores.png
     """
 }
 
@@ -78,11 +78,7 @@ process CLONE_TRACKING {
     tuple val(patient), val(sample_ids), val(timepoints), path(calls, stageAs: 'calls_?/*')
 
     output:
-    path 'clonality.tsv'
-    path 'top_clones.tsv'
-    path 'clone_tracking.tsv'
-    path 'timepoint_overlap.tsv'
-    path 'dominant_clone_agreement.tsv'
+    path "${patient}.{clonality,top_clones,clone_tracking,timepoint_overlap,dominant_clone_agreement}.tsv", emit: report
 
     script:
     def samples = [sample_ids, timepoints, calls].transpose()
@@ -90,10 +86,41 @@ process CLONE_TRACKING {
         .join(' ')
     """
     clone_tracking.py ${samples} --outdir .
+    for f in clonality top_clones clone_tracking timepoint_overlap dominant_clone_agreement; do
+        mv \$f.tsv ${patient}.\$f.tsv
+    done
     """
 
     stub:
     """
-    touch clonality.tsv top_clones.tsv clone_tracking.tsv timepoint_overlap.tsv dominant_clone_agreement.tsv
+    for f in clonality top_clones clone_tracking timepoint_overlap dominant_clone_agreement; do
+        touch ${patient}.\$f.tsv
+    done
+    """
+}
+
+// One self-contained HTML report for the whole run, from every step's tables.
+process REPORT {
+    label 'process_low'
+    publishDir params.outdir, mode: 'copy'
+
+    input:
+    path data, stageAs: 'data/*'
+    path qmd
+
+    output:
+    path 'vdjtester_report.html'
+
+    script:
+    """
+    export HOME=\$PWD XDG_CACHE_HOME=\$PWD/.cache MPLCONFIGDIR=\$PWD/.mpl NUMBA_CACHE_DIR=\$PWD/.numba
+    # Quarto renders next to the source, so work on a copy in the task directory.
+    cp ${qmd} vdjtester_report.qmd
+    quarto render vdjtester_report.qmd --to html -P data_dir:\$PWD/data
+    """
+
+    stub:
+    """
+    touch vdjtester_report.html
     """
 }
