@@ -322,6 +322,33 @@ For v0.2:
 - No B/T hybrid singlets: 0–3 per timepoint. Predicted doublets: 32–75. Scrublet
   ran with the fixed 0.25 threshold, because the scanpy container lacks scikit-image.
 
+### TRUST4 added (2026-10-16), cll_1
+
+- **TRUST4 on VDJ libraries:**
+  - `consensus_count` is UMIs (rank correlation 0.93 with Cell Ranger's UMIs).
+  - Unfiltered, it reported 1,389 "BCR + TCR" cells at timepoint 3: ambient chains
+    with 1–2 UMIs.
+  - Filter: keep a chain with ≥3 UMIs and ≥10 % of the barcode's strongest chain.
+    That gives 2,156 cells against Cell Ranger's 2,158, 99 % the same cell class.
+  - Where both call a chain: IGH 100 %, IGL 100 % (germline), TRB 98 %.
+  - It finds fewer TRA chains (alpha chains have fewer UMIs).
+- **TRUST4 on GEX libraries (`trust4_gex`, no VDJ enrichment):** about 9 min per library.
+  - Receptor found in 1,445–1,695 cells per timepoint (64–79 % of Cell Ranger's).
+  - Mostly single chains: e.g. timepoint 2 has IGL in 67 % of Cell Ranger's cells,
+    TRB 50 %, IGH 40 %, TRA 22 %.
+  - Where it calls a chain: 95–98 % germline-V agreement, CDR3 93–99 %. It never
+    calls BCR and TCR in the same cell.
+- **The dominant clones are identical across all five methods at all three timepoints:**
+  CLL IGH `ARMNYNTTRDPNWFDP` and T-cell TRB `ASSQEATENQPQH`.
+  - `trust4_gex` puts the T clone higher (24–35 % of its T cells), probably because
+    expanded clones are easier to recover from expression reads.
+- **Paralog-aware V agreement (1k B cells):** heavy chain, Cell Ranger vs MiXCR
+  79 % → 94 %; Cell Ranger vs Immcantation 86 % → 98 %.
+  - What remains is real: IGHV4-34 vs IGHV4-4 (91.6 % identical), and MiXCR's
+    IGKV3D-7 calls for IGKV3-15/3-20.
+- **Python container** now from Wave with scikit-image, so Scrublet uses its
+  automatic threshold.
+
 ### Plan: HTML report (step 7)
 
 **Form.** A `REPORT` process runs once per pipeline run, after `CLONE_TRACKING`. It
