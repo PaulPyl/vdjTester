@@ -1,5 +1,6 @@
 // MiXCR on the raw reads of one VDJ library: assembles independently of Cell Ranger.
-// Exports one row per clone and cell.
+// Exports one row per clone and cell from the preset's final, cell-assembled
+// clonotypes (<prefix>.assembledCells.clns).
 process MIXCR {
     tag "${sample_id}:${fastq_id}"
     label 'process_medium'
@@ -11,7 +12,7 @@ process MIXCR {
 
     output:
     path "mixcr.${sample_id}.${fastq_id}.tsv", emit: calls
-    path "${fastq_id}.clns"
+    path "${fastq_id}.assembledCells.clns"
     path "${fastq_id}.*report*"
 
     script:
@@ -34,7 +35,7 @@ process MIXCR {
         -tag CELL -chains -readCount -uniqueTagCount Molecule \\
         -vGene -dGene -jGene -cGene \\
         -nFeature CDR3 -aaFeature CDR3 \\
-        ${fastq_id}.clns \\
+        ${fastq_id}.assembledCells.clns \\
         mixcr.${sample_id}.${fastq_id}.tsv
 
     rm R1.fastq.gz R2.fastq.gz
@@ -42,6 +43,6 @@ process MIXCR {
 
     stub:
     """
-    touch mixcr.${sample_id}.${fastq_id}.tsv ${fastq_id}.clns ${fastq_id}.report.txt
+    touch mixcr.${sample_id}.${fastq_id}.tsv ${fastq_id}.assembledCells.clns ${fastq_id}.report.txt
     """
 }
