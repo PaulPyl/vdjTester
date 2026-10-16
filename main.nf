@@ -15,6 +15,8 @@ include { FETCH_ENA        } from './modules/local/fetch_ena'
 include { CELLRANGER_MULTI } from './modules/local/cellranger_multi'
 include { IMMCANTATION     } from './modules/local/immcantation'
 include { MIXCR            } from './modules/local/mixcr'
+include { TRUST4           } from './modules/local/trust4'
+include { FETCH_FILES      } from './modules/local/fetch_files'
 include { COMPARE_VDJ      } from './modules/local/compare'
 include { EXPRESSION_CHECK } from './modules/local/compare'
 include { CLONE_TRACKING   } from './modules/local/compare'
@@ -123,16 +125,44 @@ workflow {
         ch_mixcr_calls = MIXCR.out.calls
     }
 
+    // TRUST4's germline FASTAs: TRUST4's references, and the IMGT V genes used for
+    // paralog-aware V agreement, so they are fetched even when TRUST4 is skipped.
+    FETCH_FILES(channel.of(tuple(
+        "trust4_ref_${params.trust4_ref_version}",
+        ['hg38_bcrtcr.fa', 'human_IMGT+C.fa'].collect { f ->
+            [f, "https://raw.githubusercontent.com/liulab-dfci/TRUST4/${params.trust4_ref_version}/${f.replace('+', '%2B')}"]
+        },
+    )))
+
+    // TRUST4: a second assembler from raw reads.
+    ch_trust4_calls = channel.empty()
+    if (!params.skip_trust4) {
+        TRUST4(
+            ch_lib_items
+                .filter { _sid, lib, _dir -> lib.feature_types.startsWith('VDJ') }
+                .map { sid, lib, dir -> tuple(sid, lib.fastq_id, dir) }
+                .combine(FETCH_FILES.out)
+        )
+        ch_trust4_calls = TRUST4.out.calls
+    }
+
     // --- Per-sample comparison and expression check --------------------------------
-    // Per VDJ library: one Cell Ranger file, one Immcantation file, one MiXCR file.
-    def calls_per_vdj = params.skip_mixcr ? 2 : 3
+    // Per VDJ library: one call file each from Cell Ranger, Immcantation, and MiXCR
+    // and TRUST4 unless skipped.
+    def calls_per_vdj = 2 + (params.skip_mixcr ? 0 : 1) + (params.skip_trust4 ? 0 : 1)
     ch_calls = CELLRANGER_MULTI.out.calls
         .transpose()
-        .mix(IMMCANTATION.out.calls, ch_mixcr_calls)
+        .mix(IMMCANTATION.out.calls, ch_mixcr_calls, ch_trust4_calls)
         .map { sid, f -> tuple(groupKey(sid, vdj_per_sample[sid] * calls_per_vdj), f) }
         .groupTuple()
         .map { key, files -> tuple(key.toString(), files) }
-    COMPARE_VDJ(ch_calls)
+    // The GEX matrix gives the cell barcodes TRUST4 calls are restricted to; the VDJ
+    // reference gives germline V sequences for paralog-aware agreement.
+    COMPARE_VDJ(
+        ch_calls.join(CELLRANGER_MULTI.out.filtered_h5),
+        ch_refs.map { _gex, vdj -> vdj },
+        FETCH_FILES.out.first(),   // value channel: reused by every sample
+    )
 
     EXPRESSION_CHECK(
         CELLRANGER_MULTI.out.filtered_h5.join(COMPARE_VDJ.out.cell_classes),

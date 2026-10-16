@@ -5,22 +5,26 @@ process COMPARE_VDJ {
     publishDir path: { "${params.outdir}/compare/${sample_id}" }, mode: 'copy'
 
     input:
-    tuple val(sample_id), path(calls)
+    tuple val(sample_id), path(calls), path(filtered_h5)
+    path vdj_ref
+    path germline_ref
 
     output:
     tuple val(sample_id), path('vdj_cell_classes.tsv'), emit: cell_classes
     tuple val(sample_id), path('vdj_calls_long.tsv'), emit: calls_long
     path 'vdj_tool_summary.tsv'
     path 'vdj_pairwise_agreement.tsv'
+    path 'vdj_v_disagreements.tsv'
 
     script:
     """
-    vdj_compare.py --outdir . ${calls}
+    vdj_compare.py --gex-h5 ${filtered_h5} --vdj-ref ${vdj_ref} \\
+        --germline-fasta ${germline_ref}/human_IMGT+C.fa --outdir . ${calls}
     """
 
     stub:
     """
-    touch vdj_cell_classes.tsv vdj_calls_long.tsv vdj_tool_summary.tsv vdj_pairwise_agreement.tsv
+    touch vdj_cell_classes.tsv vdj_calls_long.tsv vdj_tool_summary.tsv vdj_pairwise_agreement.tsv vdj_v_disagreements.tsv
     """
 }
 

@@ -5,6 +5,10 @@ Input files are recognised by their name, `<tool>.<sample>.<library>.<ext>`:
   cellranger.*.csv     Cell Ranger filtered_contig_annotations.csv
   immcantation.*.tsv   Change-O MakeDb output (AIRR rearrangement)
   mixcr.*.tsv          MiXCR exportClones --split-by-tags Cell
+  trust4.*.tsv         TRUST4 <prefix>_barcode_airr.tsv (AIRR, one row per chain)
+
+TRUST4 has no cell calling, so with --gex-h5 its barcodes are restricted to the
+cells in Cell Ranger's filtered GEX matrix.
 
 Every tool is reduced to the same columns, keeping productive chains only:
   tool, cell_id, locus, v_gene, j_gene, c_gene, cdr3_core, umis
@@ -15,11 +19,24 @@ Normalisation, so that differences are biological rather than notational:
   genes      first call only, allele (`*01`) and scores dropped
   cdr3_core  CDR3 amino acids without the conserved C and W/F, since tools differ
              on whether those are part of the CDR3
+
+V-gene agreement is reported at four levels (vdj_pairwise_agreement.tsv):
+  v_agree       same first call
+  v_compatible  overlapping tied calls (IgBLAST lists equally good genes)
+  v_paralog     the same after collapsing duplicated genes: IGKV1D-39 = IGKV1-39,
+                IGHV1-69D = IGHV1-69, TRAV14/DV4 = TRAV14
+  v_germline    paralog, or germline V sequences >= --germline-identity identical
+                (IMGT V-REGIONs from --germline-fasta, else the Cell Ranger VDJ
+                reference, --vdj-ref)
+vdj_v_disagreements.tsv lists every remaining V disagreement by gene pair, with
+the germline identity and which level, if any, resolves it.
 """
 
 import argparse
+import difflib
 import itertools
 import re
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
@@ -160,10 +177,127 @@ def read_mixcr(path):
     return out[productive & (out["cell_id"] != "")]
 
 
-READERS = {"cellranger": read_cellranger, "immcantation": read_immcantation, "mixcr": read_mixcr}
+def read_trust4(path):
+    """TRUST4 barcode AIRR. Same layout as Change-O's AIRR output, but `locus` and
+    count columns are not guaranteed, so fall back where needed."""
+    df = pd.read_csv(path, sep="\t")
+    if "productive" in df:
+        df = df[as_bool(df["productive"])]
+    cdr3 = df["junction_aa"] if "junction_aa" in df else df["junction"].map(translate)
+    umis = next((df[c] for c in ["umi_count", "consensus_count", "duplicate_count"] if c in df), 0)
+    out = pd.DataFrame({
+        "cell_id": df["cell_id"].map(clean_cell),
+        "v_gene": df["v_call"].map(clean_gene),
+        "j_gene": df["j_call"].map(clean_gene),
+        "c_gene": df["c_call"].map(clean_gene) if "c_call" in df else "",
+        "v_set": df["v_call"].map(gene_set),
+        "j_set": df["j_call"].map(gene_set),
+        "cdr3_core": cdr3.map(cdr3_core),
+        "umis": umis,
+    })
+    if "locus" in df:
+        out["locus"] = df["locus"].fillna("")
+    else:
+        out["locus"] = [locus_from_gene(v, j) for v, j in zip(out["v_gene"], out["j_gene"])]
+    out["locus"] = [l if l in LOCI else locus_from_gene(v, j) for l, v, j in zip(out["locus"], out["v_gene"], out["j_gene"])]
+    return out[(out["cdr3_core"] != "") & ~out["cdr3_core"].str.contains(r"[*_]", regex=True)]
 
 
-def load(paths):
+READERS = {"cellranger": read_cellranger, "immcantation": read_immcantation, "mixcr": read_mixcr,
+           "trust4": read_trust4}
+
+
+def gex_barcodes(h5_path):
+    import h5py
+    with h5py.File(h5_path, "r") as f:
+        return {clean_cell(b.decode()) for b in f["matrix"]["barcodes"][:]}
+
+
+# --- Paralog-aware V-gene comparison ---------------------------------------------
+
+def collapse_duplicate(gene):
+    """Map duplicated genes onto their partner: IGKV1D-39 -> IGKV1-39,
+    IGHV1-69D -> IGHV1-69, TRAV14/DV4 or TRAV14DV4 -> TRAV14."""
+    g = re.sub(r"^(IG[HKL]V\d+)D-", r"\1-", gene)
+    g = re.sub(r"(-\d+)D$", r"\1", g)
+    g = re.sub(r"/?DV\d+$", "", g)
+    return g
+
+
+def load_imgt_v(fasta):
+    """Gene -> V-REGION sequence (lowest allele) from an IMGT-style FASTA with
+    headers like >IGHV3-30-3*01 (TRUST4's human_IMGT+C.fa)."""
+    seqs, name, buf = {}, None, []
+    with open(fasta) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith(">"):
+                if name and name not in seqs:
+                    seqs[name] = "".join(buf)
+                gene = line[1:].split("*")[0]
+                name = gene if re.match(r"^(IG[HKL]|TR[ABDG])V", gene) else None
+                buf = []
+            elif name:
+                buf.append(line.upper())
+    if name and name not in seqs:
+        seqs[name] = "".join(buf)
+    return seqs
+
+
+def load_v_germlines(vdj_ref, imgt_fasta=None):
+    """Germline V sequences per gene: IMGT first (complete gene set), then the Cell
+    Ranger VDJ reference (fasta/regions.fa, L-REGION+V-REGION) for anything else.
+    Ensembl-based 10x references lack some IMGT genes, e.g. IGHV3-30-3."""
+    seqs = load_imgt_v(imgt_fasta) if imgt_fasta else {}
+    if vdj_ref:
+        for gene, seq in load_10x_v(vdj_ref).items():
+            seqs.setdefault(gene, seq)
+    return seqs
+
+
+def load_10x_v(vdj_ref):
+    seqs, name, buf = {}, None, []
+    with open(Path(vdj_ref) / "fasta" / "regions.fa") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith(">"):
+                if name and name not in seqs:
+                    seqs[name] = "".join(buf)
+                fields = line[1:].split("|")
+                name = fields[2] if len(fields) > 3 and fields[3] == "L-REGION+V-REGION" else None
+                buf = []
+            elif name:
+                buf.append(line)
+    if name and name not in seqs:
+        seqs[name] = "".join(buf)
+    return seqs
+
+
+class VComparer:
+    def __init__(self, germlines, min_identity):
+        self.germlines = germlines
+        self.min_identity = min_identity
+
+    @lru_cache(maxsize=None)
+    def identity(self, a, b):
+        sa = self.germlines.get(a) or self.germlines.get(collapse_duplicate(a))
+        sb = self.germlines.get(b) or self.germlines.get(collapse_duplicate(b))
+        if not sa or not sb:
+            return float("nan")
+        return difflib.SequenceMatcher(None, sa, sb, autojunk=False).ratio()
+
+    def level(self, a, b):
+        if a == b:
+            return "same"
+        if collapse_duplicate(a) == collapse_duplicate(b):
+            return "duplicate"
+        ident = self.identity(a, b)
+        if ident == ident and ident >= self.min_identity:
+            return "similar_germline"
+        return "different"
+
+
+def load(paths, cells=None):
     frames = []
     for path in paths:
         tool = Path(path).name.split(".")[0]
@@ -172,6 +306,8 @@ def load(paths):
         if Path(path).stat().st_size == 0:
             continue
         df = READERS[tool](path)
+        if tool == "trust4" and cells is not None:
+            df = df[df["cell_id"].isin(cells)]
         df.insert(0, "tool", tool)
         frames.append(df)
     calls = pd.concat(frames, ignore_index=True)
@@ -221,7 +357,7 @@ def tool_summary(classes):
     return pd.DataFrame(rows)
 
 
-def pairwise(calls):
+def pairwise(calls, vcmp=None):
     top = calls[calls["rank"] == 1].set_index(["cell_id", "locus"])
     tools = sorted(calls["tool"].unique())
     rows = []
@@ -243,34 +379,70 @@ def pairwise(calls):
                 )
                 for f in ["v", "j"]
             }
+            if vcmp is not None and n:
+                levels = pd.Series([vcmp.level(x, y) for x, y in zip(both["v_gene_a"], both["v_gene_b"])], index=both.index)
+                paralog = levels.isin(["same", "duplicate"]) | compat["v"]
+                germline = paralog | (levels == "similar_germline")
+            else:
+                paralog = germline = pd.Series(dtype=bool)
             rows.append({
                 "tool_a": a, "tool_b": b, "locus": locus,
                 "cells_a": len(la), "cells_b": len(lb), "cells_both": n,
                 "only_a": len(la) - n, "only_b": len(lb) - n,
                 "v_agree": agree["v_gene"].mean() if n else float("nan"),
                 "v_compatible": compat["v"].mean() if n else float("nan"),
+                "v_paralog": paralog.mean() if n and vcmp is not None else float("nan"),
+                "v_germline": germline.mean() if n and vcmp is not None else float("nan"),
                 "j_agree": agree["j_gene"].mean() if n else float("nan"),
                 "j_compatible": compat["j"].mean() if n else float("nan"),
                 "cdr3_agree": agree["cdr3_core"].mean() if n else float("nan"),
                 "all_agree": all_agree.mean() if n else float("nan"),
                 "all_compatible": (compat["v"] & compat["j"] & agree["cdr3_core"]).mean() if n else float("nan"),
+                "all_germline": (germline & compat["j"] & agree["cdr3_core"]).mean() if n and vcmp is not None else float("nan"),
             })
     return pd.DataFrame(rows)
+
+
+def v_disagreements(calls, vcmp):
+    """Every V-gene disagreement between two tools on the same cell and locus,
+    counted by gene pair, with germline identity and the level resolving it."""
+    top = calls[calls["rank"] == 1]
+    wide = top.pivot_table(index=["cell_id", "locus"], columns="tool", values="v_gene", aggfunc="first")
+    rows = []
+    for a, b in itertools.combinations(sorted(wide.columns), 2):
+        pair = wide[[a, b]].dropna()
+        pair = pair[(pair[a] != pair[b]) & (pair[a] != "") & (pair[b] != "")]
+        for (locus, ga, gb), n in pair.reset_index().groupby(["locus", a, b]).size().items():
+            rows.append({"tool_a": a, "tool_b": b, "locus": locus, "v_gene_a": ga, "v_gene_b": gb, "cells": n,
+                         "germline_identity": vcmp.identity(ga, gb), "level": vcmp.level(ga, gb)})
+    cols = ["tool_a", "tool_b", "locus", "v_gene_a", "v_gene_b", "cells", "germline_identity", "level"]
+    return pd.DataFrame(rows, columns=cols).sort_values("cells", ascending=False)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("calls", nargs="+", help="per-tool call files")
+    parser.add_argument("--gex-h5", help="Cell Ranger filtered GEX matrix; restricts TRUST4 to these cells")
+    parser.add_argument("--vdj-ref", help="Cell Ranger VDJ reference dir, for germline V identity")
+    parser.add_argument("--germline-fasta", help="IMGT-style V germlines, e.g. TRUST4's human_IMGT+C.fa")
+    parser.add_argument("--germline-identity", type=float, default=0.97)
     parser.add_argument("--outdir", default=".")
     args = parser.parse_args()
     out = Path(args.outdir)
 
-    calls = load(args.calls)
+    cells = gex_barcodes(args.gex_h5) if args.gex_h5 else None
+    have_germlines = args.vdj_ref or args.germline_fasta
+    vcmp = VComparer(load_v_germlines(args.vdj_ref, args.germline_fasta), args.germline_identity) if have_germlines else None
+    calls = load(args.calls, cells)
     classes = cell_classes(calls)
     calls.to_csv(out / "vdj_calls_long.tsv", sep="\t", index=False)
     classes.to_csv(out / "vdj_cell_classes.tsv", sep="\t", index=False)
     tool_summary(classes).to_csv(out / "vdj_tool_summary.tsv", sep="\t", index=False)
-    pairwise(calls).to_csv(out / "vdj_pairwise_agreement.tsv", sep="\t", index=False, float_format="%.4f")
+    pairwise(calls, vcmp).to_csv(out / "vdj_pairwise_agreement.tsv", sep="\t", index=False, float_format="%.4f")
+    if vcmp is not None:
+        v_disagreements(calls, vcmp).to_csv(out / "vdj_v_disagreements.tsv", sep="\t", index=False, float_format="%.4f")
+    else:
+        (out / "vdj_v_disagreements.tsv").write_text("")
 
 
 if __name__ == "__main__":

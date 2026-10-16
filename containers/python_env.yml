@@ -1,0 +1,15 @@
+# Python environment for COMPARE_VDJ, EXPRESSION_CHECK and CLONE_TRACKING.
+# Built with Seqera Wave (see docs/PLAN.md); scikit-image gives Scrublet its
+# automatic doublet threshold, which the scdownstream scanpy image lacked.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - scanpy=1.12
+  - scikit-image
+  - scikit-learn
+  - h5py
+  - pandas
+  - matplotlib
+  - numba
