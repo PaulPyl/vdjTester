@@ -57,6 +57,14 @@ def clean_gene(call):
     return first.split("*")[0].strip()
 
 
+def gene_set(call):
+    """All tied calls (IgBLAST lists equally good genes), allele-stripped, as 'a,b'."""
+    if not isinstance(call, str) or call.strip() in ("", "None", "nan"):
+        return ""
+    genes = {re.sub(r"\(.*?\)", "", g).split("*")[0].strip() for g in re.split(r"[,;]", call)}
+    return ",".join(sorted(g for g in genes if g))
+
+
 def cdr3_core(aa):
     if not isinstance(aa, str):
         return ""
@@ -118,6 +126,8 @@ def read_immcantation(path):
         "v_gene": df["v_call"].map(clean_gene),
         "j_gene": df["j_call"].map(clean_gene),
         "c_gene": pd.Series(c_call, index=df.index).map(clean_gene),
+        "v_set": df["v_call"].map(gene_set),
+        "j_set": df["j_call"].map(gene_set),
         "cdr3_core": cdr3.map(cdr3_core),
         "umis": umis,
     })
@@ -165,6 +175,12 @@ def load(paths):
         df.insert(0, "tool", tool)
         frames.append(df)
     calls = pd.concat(frames, ignore_index=True)
+    # Tools without tied calls: the set is just the single call. MiXCR's hit list
+    # is ranked by score rather than tied, so it also uses its top hit only.
+    for f in ["v", "j"]:
+        if f"{f}_set" not in calls:
+            calls[f"{f}_set"] = ""
+        calls[f"{f}_set"] = calls[f"{f}_set"].fillna("").where(calls[f"{f}_set"].fillna("") != "", calls[f"{f}_gene"])
     calls["umis"] = pd.to_numeric(calls["umis"], errors="coerce").fillna(0)
     calls = calls[calls["locus"].isin(LOCI)]
     # Rank chains within tool, cell and locus; rank 1 is the call.
@@ -219,14 +235,25 @@ def pairwise(calls):
             n = len(both)
             agree = {f: (both[f"{f}_a"] == both[f"{f}_b"]) for f in ["v_gene", "j_gene", "cdr3_core"]}
             all_agree = agree["v_gene"] & agree["j_gene"] & agree["cdr3_core"]
+            # Compatible: the two tools' sets of tied calls overlap.
+            compat = {
+                f: pd.Series(
+                    [bool(set(x.split(",")) & set(y.split(","))) for x, y in zip(both[f"{f}_set_a"], both[f"{f}_set_b"])],
+                    index=both.index, dtype=bool,
+                )
+                for f in ["v", "j"]
+            }
             rows.append({
                 "tool_a": a, "tool_b": b, "locus": locus,
                 "cells_a": len(la), "cells_b": len(lb), "cells_both": n,
                 "only_a": len(la) - n, "only_b": len(lb) - n,
                 "v_agree": agree["v_gene"].mean() if n else float("nan"),
+                "v_compatible": compat["v"].mean() if n else float("nan"),
                 "j_agree": agree["j_gene"].mean() if n else float("nan"),
+                "j_compatible": compat["j"].mean() if n else float("nan"),
                 "cdr3_agree": agree["cdr3_core"].mean() if n else float("nan"),
                 "all_agree": all_agree.mean() if n else float("nan"),
+                "all_compatible": (compat["v"] & compat["j"] & agree["cdr3_core"]).mean() if n else float("nan"),
             })
     return pd.DataFrame(rows)
 
