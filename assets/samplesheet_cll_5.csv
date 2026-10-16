@@ -1,0 +1,10 @@
+sample_id,patient,timepoint,feature_types,fastq_id,runs
+cll_5_t1,cll_5,1,Gene Expression,cll_5_t1_gex,SRR36170703;SRR36170704
+cll_5_t1,cll_5,1,VDJ-B,cll_5_t1_bcr,SRR36170701;SRR36170702
+cll_5_t1,cll_5,1,VDJ-T,cll_5_t1_tcr,SRR36170699;SRR36170700
+cll_5_t2,cll_5,2,Gene Expression,cll_5_t2_gex,SRR36170697;SRR36170698
+cll_5_t2,cll_5,2,VDJ-B,cll_5_t2_bcr,SRR36170695;SRR36170696
+cll_5_t2,cll_5,2,VDJ-T,cll_5_t2_tcr,SRR36170690;SRR36170691
+cll_5_t3,cll_5,3,Gene Expression,cll_5_t3_gex,SRR36170692;SRR36170693;SRR36170694
+cll_5_t3,cll_5,3,VDJ-B,cll_5_t3_bcr,SRR36170688;SRR36170689
+cll_5_t3,cll_5,3,VDJ-T,cll_5_t3_tcr,SRR36170683;SRR36170684
