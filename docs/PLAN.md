@@ -449,53 +449,39 @@ placeholders (`PLACEHOLDER.txt`), which is enough: Nextflow sees the dir, finds 
 valid result and moves to the next hash. To free a failed attempt's space, empty its
 dir but keep the dir.
 
-### IMGT check run, cll_1 t1 + t2 (2026-10-17)
+### IMGT reference option, `--reference_set imgt` (2026-10-17, revised the same day)
 
-`results_imgt_check/`, 26 tasks, 4 h 50 min (two Cell Ranger runs). Against the default
-references on the same samples:
-- VDJ cells per method within 0.3 %.
-- IGL: exact V agreement 95-97 % -> 100 % for every pair. With its own reference Cell
-  Ranger called the CLL light chain IGLV1-44 in ~160 cells where all others said
-  IGLV1-47 (98 % identical); on the shared reference all say IGLV1-47.
-- TRB, MiXCR only: exact V agreement 99.5 % -> 96 %; ~31 cells of one clone become
-  TRBV12-3 instead of TRBV12-4 (98.5 % identical). The custom MiXCR library has V
-  regions only, while MiXCR's built-in library has leader and genomic structure, which
-  5' reads cover. A library with leader+V from fetch-imgt fails MiXCR's anchor-point
-  inference ("Failed to extract VTranscriptWithout5UTR"). Open: build MiXCR's IMGT
-  library with genomic structure, or restrict its built-in library to the shared
-  alleles.
+Goal: a fair comparison of typical workflows, so no reference built or edited by this
+pipeline. Each method gets IMGT through its own published route:
 
-### Unified germline reference, `--reference_set imgt` (2026-10-17)
+| method | default | `imgt` |
+|---|---|---|
+| Cell Ranger | 10x VDJ 7.1.0 (Ensembl 94) | `fetch-imgt` + `cellranger mkvdjref` (10x's documented IMGT route), IMGT current release, stored in `data/store/imgt` |
+| MiXCR | built-in library (repseqio v5.1, MiXCR 4.7.0) | MiLaboratories' IMGT library, `imgt.202312-3.sv8` (github.com/repseqio/library-imgt, the latest they publish) |
+| Immcantation | IMGT 2022-12-16 (suite 4.4.0 container) | same |
+| TRUST4 | IMGT file of v1.1.10 (committed 2020-08-18) | same |
 
-Default: each tool's own germlines (Cell Ranger: 10x 7.1.0 from Ensembl 94;
-Immcantation: IMGT 2022-12-16; MiXCR: built-in repseqio library; TRUST4: IMGT file of
-v1.1.10). With `--reference_set imgt` all four get V/D/J from one IMGT snapshot
-(`modules/local/imgt_reference.nf`, `bin/prep_imgt_refs.py`):
-- Snapshot in `data/store/imgt/imgt_snapshot` (IMGT serves only its current release;
-  delete the directory to refresh). First one: downloaded 2026-10-17, IMGT file of
-  2026-10-10.
-- Alleles: the GENE-DB bulk set (F + ORF + in-frame P, gapped) intersected with
-  fetch-imgt's leader+V set, which Cell Ranger needs for full-length contigs: 1,098
-  alleles of 511 genes (vs 385 genes in the 10x default). Lost: 12 genes, mostly
-  orphons (IGHV1/OR15-1 ...), IGHV3-19, IGHV3-NL1, IGHV7-40/40D. IGKV1D-27 is in
-  neither IMGT set (MiXCR's built-in library has it).
-- Constant genes stay per tool (not compared). Not built from Ensembl: IgBLAST /
-  Change-O need IMGT-gapped, allele-named germlines, and Ensembl has no alleles.
-- Immcantation: IgBLAST's J aux file lacks newer J names (IGLJ2A/2B), and without a
-  line IgBLAST gives no junction (every cll_1 lambda contig was dropped); the build
-  derives the missing lines. On cll_1_t1 contigs, IMGT and default annotation give
-  identical V and junction for all 4,019 BCR and 432 TCR contigs.
-- MiXCR: separate process `MIXCR_IMGT`, so the default `MIXCR` tasks keep their hashes.
-  `IMMCANTATION` changed in place: its default tasks (~1 min each) rerun once.
-- Run with an explicit session, so per-sample tasks are shared between runs (stub
-  runs make a plain `-resume` pick the wrong session):
+The IMGT releases differ (2020 to 2026). TRUST4 (`BuildImgtAnnot.pl`) and Immcantation
+(`fetch_imgt.sh` + `imgt2igblast.sh`) could be refreshed to IMGT's current release with
+their own scripts, but IgBLAST's bundled J annotation (2022) lacks newer J names
+(IGLJ2A/2B): IgBLAST then reports no junction for them, and every cll_1 lambda contig
+was lost. That would need a newer IgBLAST/Immcantation release, not a patch here.
 
-      nextflow run . -profile mac --reference_set imgt --samplesheet assets/samplesheet_cll.csv \
-          --outdir results_imgt -resume 72a5d2d7-0867-44fe-a32c-0ce2e3f77f26
+First attempt, dropped: one IMGT snapshot for all four, restricted to the alleles both
+the GENE-DB bulk file and fetch-imgt have, with self-built IgBLAST, TRUST4 and MiXCR
+references. A reference nobody else uses, and it misled MiXCR: its self-built library
+lacked TRBV12-4*02 (in IMGT but without a leader) and called a TRBV12-4 clone TRBV12-3
+in ~31 cells. MiLaboratories' IMGT library calls it TRBV12-4*01 like the other methods.
 
-- Check run started 2026-10-17 11:06 on cll_1 t1 + t2
-  (`assets/samplesheet_cll_1_t1t2.csv`, `results_imgt_check/`); its per-sample tasks
-  are reused by the full run above.
+Check run on cll_1 t1 + t2 with that first version (results_imgt_check/, superseded):
+IGL exact V agreement rose from 95-97 % to 100 % (Cell Ranger's 10x reference called
+the CLL light chain IGLV1-44 in ~160 cells where all others said IGLV1-47).
+
+Run, with an explicit session so per-sample tasks are shared between runs (stub runs
+make a plain `-resume` pick the wrong session):
+
+    nextflow run . -profile mac --reference_set imgt --samplesheet assets/samplesheet_cll.csv \
+        --outdir results_imgt -resume 72a5d2d7-0867-44fe-a32c-0ce2e3f77f26
 
 ### Original plan: HTML report (step 7)
 

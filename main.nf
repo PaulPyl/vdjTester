@@ -23,7 +23,8 @@ include { EXPRESSION_CHECK } from './modules/local/compare'
 include { CLONE_TRACKING   } from './modules/local/compare'
 include { COMPARE_CLONES   } from './modules/local/compare'
 include { REPORT           } from './modules/local/compare'
-include { FETCH_IMGT; PREP_IMGT_REFS; MKVDJREF_IMGT; IGBLAST_IMGT; MIXCR_LIBRARY_IMGT } from './modules/local/imgt_reference'
+include { FETCH_IMGT; MKVDJREF_IMGT } from './modules/local/imgt_reference'
+include { FETCH_FILES as FETCH_MIXCR_LIBRARY } from './modules/local/fetch_files'
 
 // Directory name a 10x tarball unpacks to.
 def tarName(String url) {
@@ -76,24 +77,20 @@ workflow {
         },
     )))
 
-    // --- Germline references: each tool's own, or all from one IMGT snapshot --------
-    // ch_vdj_refs: (GEX reference, VDJ reference) for Cell Ranger; ch_trust4_ref: TRUST4's
-    // FASTAs, whose IMGT V genes also serve the V-agreement in COMPARE_VDJ.
-    ch_vdj_refs   = ch_refs
-    ch_trust4_ref = FETCH_FILES.out
-    ch_igblast    = channel.value(file("${projectDir}/assets/NO_REFERENCE", checkIfExists: true))
-    ch_mixcr_lib  = channel.empty()
+    // --- Germline references: each tool's own, or IMGT through each tool's own route --
+    // (modules/local/imgt_reference.nf). Immcantation and TRUST4 use IMGT germlines
+    // either way; with 'imgt', Cell Ranger gets a fetch-imgt reference and MiXCR
+    // MiLaboratories' IMGT library.
+    ch_vdj_refs  = ch_refs
+    ch_mixcr_lib = channel.empty()
     if (imgt) {
         FETCH_IMGT()
-        PREP_IMGT_REFS(FETCH_IMGT.out, FETCH_FILES.out)
-        MKVDJREF_IMGT(PREP_IMGT_REFS.out)
-        IGBLAST_IMGT(PREP_IMGT_REFS.out)
-        ch_vdj_refs   = ch_refs.combine(MKVDJREF_IMGT.out).map { gex, _vdj, vdj_imgt -> tuple(gex, vdj_imgt) }
-        ch_trust4_ref = PREP_IMGT_REFS.out.map { refs -> refs.resolve('trust4') }
-        ch_igblast    = IGBLAST_IMGT.out.first()
+        MKVDJREF_IMGT(FETCH_IMGT.out)
+        ch_vdj_refs = ch_refs.combine(MKVDJREF_IMGT.out).map { gex, _vdj, vdj_imgt -> tuple(gex, vdj_imgt) }
         if (!params.skip_mixcr) {
-            MIXCR_LIBRARY_IMGT(PREP_IMGT_REFS.out)
-            ch_mixcr_lib = MIXCR_LIBRARY_IMGT.out.first()
+            def lib_file = params.mixcr_imgt_library.tokenize('/').last()
+            FETCH_MIXCR_LIBRARY(channel.of(tuple("mixcr_library_${lib_file.replaceAll(/\.json(\.gz)?$/, '')}", [[lib_file, params.mixcr_imgt_library]])))
+            ch_mixcr_lib = FETCH_MIXCR_LIBRARY.out.map { dir -> dir.resolve(lib_file) }.first()
         }
     }
 
@@ -151,7 +148,7 @@ workflow {
 
     ch_cr_vdj = CELLRANGER_MULTI.out.vdj_b.map { sid, dir -> tuple(sid, 'vdj_b', dir) }
         .mix(CELLRANGER_MULTI.out.vdj_t.map { sid, dir -> tuple(sid, 'vdj_t', dir) })
-    IMMCANTATION(ch_cr_vdj, ch_igblast)
+    IMMCANTATION(ch_cr_vdj)
 
     // MiXCR needs only the reads, so it starts as soon as a VDJ library is there.
     ch_mixcr_calls = channel.empty()
@@ -177,7 +174,7 @@ workflow {
                     lib.feature_types.startsWith('VDJ') || (params.trust4_gex && lib.feature_types == 'Gene Expression')
                 }
                 .map { sid, lib, dir -> tuple(sid, lib.fastq_id, dir) }
-                .combine(ch_trust4_ref)
+                .combine(FETCH_FILES.out)
         )
         ch_trust4_calls = TRUST4.out.calls
     }
@@ -204,7 +201,7 @@ workflow {
     COMPARE_VDJ(
         ch_calls.join(CELLRANGER_MULTI.out.filtered_h5).map { sid, calls, h5 -> tuple(sid, calls, h5, gex_ids) },
         ch_vdj_refs.map { _gex, vdj -> vdj }.first(),
-        ch_trust4_ref.first(),   // value channel: reused by every sample
+        FETCH_FILES.out.first(),   // value channel: reused by every sample
     )
 
     EXPRESSION_CHECK(
@@ -230,13 +227,13 @@ workflow {
     ch_samples_tsv = ch_meta
         .map { sid, meta -> "${sid}\t${meta.patient}\t${meta.timepoint}" }
         .collectFile(name: 'samples.tsv', newLine: true, sort: true, seed: "sample_id\tpatient\ttimepoint")
-    // Which IMGT snapshot, for the run overview.
+    // Each method's germline reference, for the run overview.
     ch_ref_info = imgt
-        ? PREP_IMGT_REFS.out.map { refs ->
-            def kv = refs.resolve('snapshot.tsv').readLines().drop(1).collectEntries { line -> def p = line.split('\t'); [(p[0]): p[1]] }
-            "IMGT for all tools: downloaded ${kv.downloaded}, IMGT file of ${kv.imgt_bulk_last_modified}; ${refs.resolve('summary.txt').text.trim()}"
+        ? MKVDJREF_IMGT.out.map { ref ->
+            def date = ref.resolve('imgt_downloaded.txt')
+            "IMGT via fetch-imgt + mkvdjref, downloaded ${date.exists() ? date.text.trim() : 'on an unrecorded date'}"
         }
-        : channel.value("each tool's own")
+        : channel.value("${tarName(params.vdj_ref_url)} (Ensembl-based)")
     ch_run_info = CELLRANGER_MULTI.out.versions.first()
         .combine(ch_ref_info)
         .map { f, ref_info ->
@@ -244,7 +241,11 @@ workflow {
                 ['run_name', workflow.runName], ['date', new Date().format('yyyy-MM-dd')],
                 ['nextflow', nextflow.version.toString()], ['profile', workflow.profile],
                 ['input', params.samplesheet ?: "10x example ${params.sample_id}"],
-                ['germline reference', ref_info],
+                ['reference set', params.reference_set],
+                ['germlines: Cell Ranger', ref_info],
+                ['germlines: MiXCR', params.skip_mixcr ? 'skipped' : (imgt ? params.mixcr_imgt_library.tokenize('/').last() : 'built-in library')],
+                ['germlines: Immcantation', "IMGT germlines in ${params.immcantation_container}"],
+                ['germlines: TRUST4', "IMGT file of TRUST4 ${params.trust4_ref_version}"],
                 ['cellranger', f.text.trim()],
                 ['immcantation', params.immcantation_container],
                 ['mixcr', params.skip_mixcr ? 'skipped' : params.mixcr_container],

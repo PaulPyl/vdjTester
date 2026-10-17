@@ -10,9 +10,6 @@ process IMMCANTATION {
 
     input:
     tuple val(sample_id), val(chain), path(vdj_dir)
-    // IGBLAST_IMGT output (--reference_set imgt), or assets/NO_REFERENCE for the
-    // container's own germlines.
-    path igblast_ref
 
     output:
     tuple val(sample_id), path("immcantation.${sample_id}.${chain}.tsv"), emit: calls
@@ -21,7 +18,6 @@ process IMMCANTATION {
     script:
     // changeo-10x takes `ig` or `tr` for the receptor type.
     def receptor = chain == 'vdj_b' ? 'ig' : 'tr'
-    def germlines = igblast_ref.name == 'NO_REFERENCE' ? '' : "-r ${igblast_ref}/germlines/human/vdj -b ${igblast_ref}"
     """
     changeo-10x \\
         -s ${vdj_dir}/filtered_contig.fasta \\
@@ -30,7 +26,6 @@ process IMMCANTATION {
         -n ${sample_id}_${chain} \\
         -g human \\
         -t ${receptor} \\
-        ${germlines} \\
         -x 0.16 \\
         -p ${task.cpus} \\
         > immcantation.${sample_id}.${chain}.log 2>&1

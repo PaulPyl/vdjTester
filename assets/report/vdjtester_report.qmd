@@ -223,9 +223,10 @@ some TRAV genes are also TRDV genes (TRAV14/DV4). Many such pairs are identical 
 V region (IGKV1-39 / 1D-39 and IGHV1-69 / 1-69D in IMGT), so the sequenced transcript
 cannot say which copy it came from. Which name a method reports then depends on which
 copies its reference contains and how its aligner breaks ties: the 10x reference has
-IGKV1-27 but no IGKV1D-27, while MiXCR's library has both and may report either. A
-shared reference removes the first cause but not the second. The collapse removes that
-naming noise. It is a fixed rule taken from IMGT nomenclature (drop the "D" copy marker
+IGKV1-27 but no IGKV1D-27, while MiXCR's library has both and may report either. IMGT
+references for every method (`--reference_set imgt`) narrow the first cause, though the
+methods' IMGT releases differ, and leave the second. The collapse removes that naming
+noise. It is a fixed rule taken from IMGT nomenclature (drop the "D" copy marker
 and the /DV name), not learned from the data, and it is applied in the analysis rather
 than by editing the references, so the references stay as distributed. Pairs that are
 not identical (IGKV1-13 / 1D-13, 99.7 %) are collapsed at this level too, so a real
@@ -592,6 +593,16 @@ set to the median number of detected genes. A cell is positive when its score cl
 threshold (mixture model, floored at 0.15 for B and 0.2 for T) *and* at least 3 markers
 of the set are detected. *both* cells are split by Scrublet into doublets and singlets
 (candidate B/T hybrids).
+
+**Germline references** (rows *germlines* in the run overview). By default each method
+uses its usual reference: Cell Ranger the 10x VDJ reference (built from Ensembl 94),
+MiXCR its built-in library, Immcantation the IMGT germlines in its container (IMGT of
+2022-12-16 in suite 4.4.0) and TRUST4 the IMGT file of its release (IMGT of August
+2020). With `--reference_set imgt` every method uses IMGT through its own published
+route, with nothing rebuilt or filtered by this pipeline: Cell Ranger a reference from
+its `fetch-imgt` and `mkvdjref` (IMGT's current release), MiXCR MiLaboratories' IMGT
+library (release 202312-3), Immcantation and TRUST4 unchanged. The IMGT releases still
+differ between methods.
 
 **Known caveats.**
 
