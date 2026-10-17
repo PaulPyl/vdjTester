@@ -46,3 +46,56 @@ process MIXCR {
     touch mixcr.${sample_id}.${fastq_id}.tsv ${fastq_id}.assembledCells.clns ${fastq_id}.report.txt
     """
 }
+
+// MIXCR with a custom germline library (--reference_set imgt). A separate process
+// rather than an optional input to MIXCR: changing MIXCR's script would change the
+// task hash of every default-reference MiXCR task, and -resume would rerun them
+// (~5 CPU hours on cll_1 + cll_5). MiXCR takes a library by name, looked up in the
+// working directory among other places, not by path; the species name is the one
+// the library was built with (hsa).
+process MIXCR_IMGT {
+    tag "${sample_id}:${fastq_id}"
+    label 'process_medium'
+    publishDir path: { "${params.outdir}/mixcr/${sample_id}" }, mode: 'copy'
+    secret 'MI_LICENSE'
+
+    input:
+    tuple val(sample_id), val(fastq_id), path(lib_dir)
+    path library, stageAs: 'mixcr_imgt.json.gz'
+
+    output:
+    tuple val(sample_id), path("mixcr.${sample_id}.${fastq_id}.tsv"), emit: calls
+    path "${fastq_id}.assembledCells.clns"
+    path "${fastq_id}.*report*"
+
+    script:
+    """
+    export HOME=\$PWD TMPDIR=\$PWD XDG_CACHE_HOME=\$PWD/.cache
+
+    cat ${lib_dir}/${fastq_id}_S*_L*_R1_001.fastq.gz > R1.fastq.gz
+    cat ${lib_dir}/${fastq_id}_S*_L*_R2_001.fastq.gz > R2.fastq.gz
+
+    mixcr analyze 10x-sc-xcr-vdj \\
+        --species hsa \\
+        --library mixcr_imgt \\
+        --threads ${task.cpus} \\
+        R1.fastq.gz R2.fastq.gz \\
+        ${fastq_id}
+
+    mixcr exportClones \\
+        --split-by-tags Cell \\
+        --drop-default-fields \\
+        -tag CELL -chains -readCount -uniqueTagCount Molecule \\
+        -vGene -dGene -jGene -cGene \\
+        -nFeature CDR3 -aaFeature CDR3 \\
+        ${fastq_id}.assembledCells.clns \\
+        mixcr.${sample_id}.${fastq_id}.tsv
+
+    rm R1.fastq.gz R2.fastq.gz
+    """
+
+    stub:
+    """
+    touch mixcr.${sample_id}.${fastq_id}.tsv ${fastq_id}.assembledCells.clns ${fastq_id}.report.txt
+    """
+}
