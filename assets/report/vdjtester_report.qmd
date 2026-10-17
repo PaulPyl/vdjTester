@@ -89,6 +89,9 @@ clonality = per_patient("clonality.tsv")
 tracking = per_patient("clone_tracking.tsv")
 overlap = per_patient("timepoint_overlap.tsv")
 dominant = per_patient("dominant_clone_agreement.tsv")
+clone_pair = per_sample("clone_pairwise.tsv")
+clone_sum = per_sample("clone_summary.tsv")
+clone_tab = per_sample("clone_table.tsv")
 tools = tools_in(summary)
 ```
 
@@ -289,6 +292,123 @@ if len(vdis):
     display(Markdown("All V-gene disagreements by explanation (cells, pooled): " +
                      ", ".join(f"**{k}** {int(v)}" for k, v in lev.items())))
 ```
+
+## Clone-level agreement
+
+The cell-level agreement above weights every cell equally, so in a CLL sample the
+leukaemic clone, with thousands of cells, decides it. Here every clonotype counts
+once. A cell's clonotype comes from its top IGH (BCR) or TRB (TCR) chain, at four
+definitions:
+
+- **lineage**: clonal family. Same V gene (duplicates collapsed), J gene and CDR3
+  length, with CDR3s joined at ≥ 85 % amino-acid identity (single linkage), clustered
+  over all methods of a sample together so the labels are shared. In CLL the exact
+  definitions split the leukaemic clone into dozens of one-residue CDR3 variants,
+  sequencing errors or real subclones; this one keeps them together.
+- **paralog**: V | J | CDR3, with duplicated V genes collapsed.
+- **strict**: V | J | CDR3 as reported.
+- **cdr3**: CDR3 only, blind to V/J naming.
+
+For each pair of methods (a / b), on the cells both give a clonotype:
+
+- **same clone, per clone**: for each clonotype of either method, the share of its
+  cells the other method assigns the same clonotype, averaged over clonotypes.
+  **per cell** is the same with every cell counting once.
+- **a / b kept whole**: for each of a's (b's) clonotypes with ≥ 2 shared cells, the
+  share of its cells in the other method's largest matching clonotype. Independent of
+  naming: low *a kept whole* means b splits a's clones.
+- **a / b expanded found**: share of a's (b's) clonotypes with ≥ 2 cells that the
+  other method reports at all.
+- **Jaccard**: shared clonotypes over all clonotypes of the two.
+- **ARI**: adjusted Rand index of the two groupings. It counts cell pairs, so large
+  clones dominate it, and a few cells split off a very large clone pull it down a
+  lot even when nearly every cell agrees.
+
+Values are means over samples (each sample counts once). In a CLL sample a method
+finds only a handful of BCR lineages (the leukaemic clone and a few others), so the
+per-clone BCR values rest on very few clones, and one misassigned V gene in a few
+cells shows up as a separate lineage; the TCR repertoire is the larger test.
+
+::: {.panel-tabset}
+
+```{python}
+#| output: asis
+CLONE_METRICS = [("same_clone_clones", "same clone, per clone"), ("same_clone_cells", "same clone, per cell"),
+                 ("purity_a_in_b", "a kept whole"), ("purity_b_in_a", "b kept whole"),
+                 ("expanded_a_found_in_b", "a expanded found"), ("expanded_b_found_in_a", "b expanded found"),
+                 ("jaccard", "Jaccard"), ("ari", "ARI")]
+if len(clone_pair):
+    for definition in ["lineage", "paralog", "strict", "cdr3"]:
+        sub = clone_pair[clone_pair["definition"] == definition].copy()
+        if not len(sub):
+            continue
+        print(f"\n## {definition}\n")
+        sub["pair"] = sub["tool_a"].map(LABELS) + " / " + sub["tool_b"].map(LABELS)
+        receptors = [r for r in ["BCR", "TCR"] if r in set(sub["receptor"])]
+        labels = [l for _, l in CLONE_METRICS]
+        pairs = sorted(sub["pair"].unique())
+        fig, axes = plt.subplots(1, len(receptors), figsize=(4.2 * len(receptors), 0.42 * len(pairs) + 2.2), sharey=True)
+        for ax, receptor in zip(np.atleast_1d(axes), receptors):
+            mean = (sub[sub["receptor"] == receptor].groupby("pair")[[c for c, _ in CLONE_METRICS]]
+                    .mean().reindex(pairs))
+            mat = mean.to_numpy(dtype=float)
+            ax.imshow(mat, vmin=0, vmax=1, cmap="viridis", aspect="auto")
+            for (i, j), v in np.ndenumerate(mat):
+                if v == v:
+                    ax.text(j, i, f"{100 * v:.0f}", ha="center", va="center", fontsize=8,
+                            color="white" if v < 0.6 else "black")
+            ax.set_xticks(range(len(labels)), labels, rotation=60, ha="right")
+            ax.set_yticks(range(len(pairs)), pairs)
+            ax.set_title(receptor)
+        fig.suptitle(f"Clone-level agreement (%), {definition} clonotypes; colour scale 0-100 %", y=1.0)
+        fig.tight_layout()
+        plt.show()
+else:
+    print("No clone-level comparison output.")
+```
+
+:::
+
+### Clonotypes per method
+
+Lineages per sample and method: all / with ≥ 2 cells.
+
+```{python}
+if len(clone_sum):
+    cs = clone_sum[clone_sum["definition"] == "lineage"].copy()
+    cs["value"] = cs["clonotypes"].astype(int).astype(str) + " / " + cs["expanded_clonotypes"].astype(int).astype(str)
+    wide = cs.pivot_table(index=["sample_id", "receptor"], columns="tool", values="value", aggfunc="first")
+    wide = wide[[t for t in TOOLS if t in wide.columns]].rename(columns=LABELS).reset_index()
+    show(wide)
+```
+
+### Largest lineages per sample
+
+Cells per method in the largest lineages (by any method). A lineage is labelled by its
+most common CDR3; "~" marks a lineage rather than an exact clonotype.
+
+::: {.panel-tabset}
+
+```{python}
+#| output: asis
+if len(clone_tab):
+    for sid in samples["sample_id"]:
+        t = clone_tab[(clone_tab["sample_id"] == sid) & (clone_tab["definition"] == "lineage")]
+        if not len(t):
+            continue
+        print(f"\n## {sid}\n")
+        for receptor in ["BCR", "TCR"]:
+            r = t[t["receptor"] == receptor].head(8)
+            if not len(r):
+                continue
+            cols = [c for c in TOOLS if c in r.columns]
+            r = r[["clonotype"] + cols].rename(columns=LABELS)
+            print(f"\n**{receptor}**\n")
+            print(r.to_markdown(index=False, floatfmt=".0f"))
+            print()
+```
+
+:::
 
 ## Expression vs VDJ
 

@@ -21,6 +21,7 @@ include { FETCH_FILES      } from './modules/local/fetch_files'
 include { COMPARE_VDJ      } from './modules/local/compare'
 include { EXPRESSION_CHECK } from './modules/local/compare'
 include { CLONE_TRACKING   } from './modules/local/compare'
+include { COMPARE_CLONES   } from './modules/local/compare'
 include { REPORT           } from './modules/local/compare'
 include { FETCH_IMGT; PREP_IMGT_REFS; MKVDJREF_IMGT; IGBLAST_IMGT; MIXCR_LIBRARY_IMGT } from './modules/local/imgt_reference'
 
@@ -211,6 +212,9 @@ workflow {
         file(params.markers, checkIfExists: true),
     )
 
+    // --- Clone-level comparison of the methods, per sample --------------------------
+    COMPARE_CLONES(COMPARE_VDJ.out.calls_long)
+
     // --- Clone tracking across a patient's timepoints ------------------------------
     def samples_per_patient = params.samplesheet
         ? file(params.samplesheet).splitCsv(header: true).collect { row -> [row.patient, row.sample_id] }.unique().countBy { pair -> pair[0] }
@@ -254,7 +258,7 @@ workflow {
     ch_metrics = CELLRANGER_MULTI.out.metrics
         .collectFile { sid, f -> ["${sid}.metrics_summary.csv", f.text] }
     ch_report_data = COMPARE_VDJ.out.report.flatten()
-        .mix(EXPRESSION_CHECK.out.report.flatten(), CLONE_TRACKING.out.report.flatten(), ch_metrics, ch_samples_tsv, ch_run_info)
+        .mix(EXPRESSION_CHECK.out.report.flatten(), CLONE_TRACKING.out.report.flatten(), COMPARE_CLONES.out.report.flatten(), ch_metrics, ch_samples_tsv, ch_run_info)
         .collect()
     REPORT(ch_report_data, file("${projectDir}/assets/report/vdjtester_report.qmd", checkIfExists: true))
 }

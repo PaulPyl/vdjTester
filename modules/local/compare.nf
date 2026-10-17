@@ -100,6 +100,31 @@ process CLONE_TRACKING {
     """
 }
 
+// Clone-level comparison of the methods for one sample: every clonotype counts once,
+// at four clonotype definitions including clonal lineages (see clone_compare.py).
+process COMPARE_CLONES {
+    tag "${sample_id}"
+    label 'process_low'
+    publishDir path: { "${params.outdir}/clones/${sample_id}" }, mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(calls_long)
+
+    output:
+    path "${sample_id}.clone_{summary,pairwise,table}.tsv", emit: report
+
+    script:
+    """
+    clone_compare.py --calls ${calls_long} --lineage-identity ${params.lineage_identity} --outdir .
+    for f in clone_summary clone_pairwise clone_table; do mv \$f.tsv ${sample_id}.\$f.tsv; done
+    """
+
+    stub:
+    """
+    for f in clone_summary clone_pairwise clone_table; do touch ${sample_id}.\$f.tsv; done
+    """
+}
+
 // One self-contained HTML report for the whole run, from every step's tables.
 process REPORT {
     label 'process_low'
