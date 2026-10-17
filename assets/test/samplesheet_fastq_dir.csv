@@ -1,0 +1,8 @@
+sample_id,patient,timepoint,feature_types,fastq_id,runs,fastq_dir
+p1_t1,p1,1,Gene Expression,p1_t1_gex,,fastqs/p1_t1
+p1_t1,p1,1,VDJ-B,p1_t1_bcr,,fastqs/p1_t1
+p1_t2,p1,2,Gene Expression,p1_t2_gex,,fastqs/p1_t2_gex
+p1_t2,p1,2,VDJ-B,p1_t2_bcr,,fastqs/p1_t2_vdj
+p1_t2,p1,2,VDJ-T,p1_t2_tcr,,fastqs/p1_t2_vdj
+cll_1_t1,cll_1,1,Gene Expression,cll_1_t1_gex,SRR36170840;SRR36170841,
+cll_1_t1,cll_1,1,VDJ-B,cll_1_t1_bcr,SRR36170838;SRR36170839,
