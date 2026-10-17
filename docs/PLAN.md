@@ -473,7 +473,7 @@ references. A reference nobody else uses, and it misled MiXCR: its self-built li
 lacked TRBV12-4*02 (in IMGT but without a leader) and called a TRBV12-4 clone TRBV12-3
 in ~31 cells. MiLaboratories' IMGT library calls it TRBV12-4*01 like the other methods.
 
-Check run on cll_1 t1 + t2 with that first version (results_imgt_check/, superseded):
+Check run on cll_1 t1 + t2 with that first version (outputs removed 2026-10-17):
 IGL exact V agreement rose from 95-97 % to 100 % (Cell Ranger's 10x reference called
 the CLL light chain IGLV1-44 in ~160 cells where all others said IGLV1-47).
 
