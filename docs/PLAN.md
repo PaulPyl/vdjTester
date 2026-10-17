@@ -439,6 +439,38 @@ now removes), the per-patient result copies and the internal-disk offload.
 `/Volumes/vdj`: 58 -> 114 GB free; `work/` 14 GB. Always drop the VM's caches
 after deleting (see cll_5 notes), or the space is not released.
 
+### Unified germline reference, `--reference_set imgt` (2026-10-17)
+
+Default: each tool's own germlines (Cell Ranger: 10x 7.1.0 from Ensembl 94;
+Immcantation: IMGT 2022-12-16; MiXCR: built-in repseqio library; TRUST4: IMGT file of
+v1.1.10). With `--reference_set imgt` all four get V/D/J from one IMGT snapshot
+(`modules/local/imgt_reference.nf`, `bin/prep_imgt_refs.py`):
+- Snapshot in `data/store/imgt/imgt_snapshot` (IMGT serves only its current release;
+  delete the directory to refresh). First one: downloaded 2026-10-17, IMGT file of
+  2026-10-10.
+- Alleles: the GENE-DB bulk set (F + ORF + in-frame P, gapped) intersected with
+  fetch-imgt's leader+V set, which Cell Ranger needs for full-length contigs: 1,098
+  alleles of 511 genes (vs 385 genes in the 10x default). Lost: 12 genes, mostly
+  orphons (IGHV1/OR15-1 ...), IGHV3-19, IGHV3-NL1, IGHV7-40/40D. IGKV1D-27 is in
+  neither IMGT set (MiXCR's built-in library has it).
+- Constant genes stay per tool (not compared). Not built from Ensembl: IgBLAST /
+  Change-O need IMGT-gapped, allele-named germlines, and Ensembl has no alleles.
+- Immcantation: IgBLAST's J aux file lacks newer J names (IGLJ2A/2B), and without a
+  line IgBLAST gives no junction (every cll_1 lambda contig was dropped); the build
+  derives the missing lines. On cll_1_t1 contigs, IMGT and default annotation give
+  identical V and junction for all 4,019 BCR and 432 TCR contigs.
+- MiXCR: separate process `MIXCR_IMGT`, so the default `MIXCR` tasks keep their hashes.
+  `IMMCANTATION` changed in place: its default tasks (~1 min each) rerun once.
+- Run with an explicit session, so per-sample tasks are shared between runs (stub
+  runs make a plain `-resume` pick the wrong session):
+
+      nextflow run . -profile mac --reference_set imgt --samplesheet assets/samplesheet_cll.csv \
+          --outdir results_imgt -resume 72a5d2d7-0867-44fe-a32c-0ce2e3f77f26
+
+- Check run started 2026-10-17 11:06 on cll_1 t1 + t2
+  (`assets/samplesheet_cll_1_t1t2.csv`, `results_imgt_check/`); its per-sample tasks
+  are reused by the full run above.
+
 ### Original plan: HTML report (step 7)
 
 **Form.** A `REPORT` process runs once per pipeline run, after `CLONE_TRACKING`. It
