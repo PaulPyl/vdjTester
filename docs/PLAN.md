@@ -363,6 +363,34 @@ below, with two deviations:
 - Develop the report against `results_report_dev/` (prefixed copies of a run's
   tables) with `VDJTESTER_REPORT_DATA=<dir>`.
 
+### cll_5, second patient (2026-10-17)
+
+`results_cll_5/`, 3 timepoints, ibrutinib-resistant. 45 GB from ENA; it took four
+launches because of the download step, not the analysis:
+- R1/R2 detection by the exact TSO failed (degraded oligo); now the core motif.
+- process_single's 2 h limit killed a 13 GB GEX download at ~1 MB/s; downloads
+  now go to a resumable cache in the store (`fastq/.downloads`) with a 24 h limit.
+- curl's own `--retry` after an ENA HTTP 500 resumed from a stale offset (MD5
+  mismatch); each retry is now a fresh curl.
+- Disk: the Lima VM kept ~50 GB of deleted files open over its shared mount;
+  `limactl shell apptainer sudo sh -c 'sync; echo 2 > /proc/sys/vm/drop_caches'`
+  releases them. A Cell Ranger task on the largest library peaked above 40 GB.
+  cll_1's TRUST4 `out/` dirs (35 GB, intermediates) were moved to
+  `~/Projects/Science/vdjTester_offload/`.
+
+Results:
+- BCR: one clone, IGHV3-48/IGHJ6 `ARDNRRCSSTSCYGFYYYGMDV`, 98-99 % of BCR cells at
+  every timepoint in all five methods (trust4_gex 87-94 %). BCR Morisita-Horn
+  overlap between timepoints is 1.0.
+- TCR: polyclonal (top clone 5-13 %), MH overlap 0.59-0.70. At t3 the four VDJ
+  methods agree on the top TRB; trust4_gex picks another clone of similar size.
+- MiXCR calls IGKV1D-27 where the others call IGKV1-27 (identical germline); the
+  paralog level counts these as agreeing (v_paralog 1.0, v_agree 0.0003).
+- Cell Ranger finds 3416 / 5535 / 4523 VDJ cells; MiXCR 2-7 % fewer, TRUST4 within 1 %.
+- Expression: B cells under-called again (t3: 3720 of 6111 QC cells "neither";
+  226-522 cells per timepoint above the B score but with fewer than 3 markers),
+  the same CLL marker problem as cll_1. Scrublet predicts 0-1 doublets.
+
 ### Original plan: HTML report (step 7)
 
 **Form.** A `REPORT` process runs once per pipeline run, after `CLONE_TRACKING`. It
