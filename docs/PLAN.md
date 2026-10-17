@@ -419,6 +419,26 @@ specificity beyond T cells.
   and t3 although an identical run 12 min later reused them. Runs now use
   `-dump-hashes json`; the aborted attempt left `work/c7/3e425f…` (19 GB).
 
+### Unified CLL run and cleanup (2026-10-17)
+
+One samplesheet for all patients, one report (`results/vdjtester_report.html`):
+
+    nextflow run . -profile mac --samplesheet assets/samplesheet_cll.csv \
+        -c conf/resume_cr44.config -resume -ansi-log false
+
+`conf/resume_cr44.config` now sets Cell Ranger memory per sample (44 GB for cll_1,
+whose cached tasks ran with `--localmem=44`, 32 GB otherwise), so both patients'
+Cell Ranger tasks are reused. Add new patients' rows to `samplesheet_cll.csv`.
+The old 1k test sample's published outputs are in `results_1k/` (its work dirs
+are gone, so they cannot be regenerated without a rerun).
+
+Cleanup without recompute: deleted work dirs not used by the unified run (killed
+attempts, superseded expression checks and reports, the aborted 19 GB Cell Ranger
+attempt), MiXCR/TRUST4 intermediates in the kept cll_1 dirs (what `afterScript`
+now removes), the per-patient result copies and the internal-disk offload.
+`/Volumes/vdj`: 58 -> 114 GB free; `work/` 14 GB. Always drop the VM's caches
+after deleting (see cll_5 notes), or the space is not released.
+
 ### Original plan: HTML report (step 7)
 
 **Form.** A `REPORT` process runs once per pipeline run, after `CLONE_TRACKING`. It
