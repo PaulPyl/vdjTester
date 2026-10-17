@@ -415,9 +415,12 @@ specificity beyond T cells.
 - **Caveat:** genes and floor were chosen and checked on the same six samples; the
   next patient is the honest test. cll_5 t3 (lowest depth, median 1118 genes) is
   still the weakest at 93 %.
-- **Unexplained cache miss:** one cll_1 resume at 09:26 re-ran Cell Ranger for t1
-  and t3 although an identical run 12 min later reused them. Runs now use
-  `-dump-hashes json`; the aborted attempt left `work/c7/3e425f…` (19 GB).
+- **Cache miss, explained later the same day:** a task that failed or was killed and
+  then succeeded on a later run has its result under a *retry* hash. Nextflow first
+  looks at the base-hash work dir: if it holds a failed attempt it moves on to the retry
+  hash, but if the dir is gone it runs the task again there. The cleanup of 2026-10-16
+  had deleted such first attempts, so cll_1 t1/t3 Cell Ranger restarted. See the
+  cleanup notes below.
 
 ### Unified CLL run and cleanup (2026-10-17)
 
@@ -438,6 +441,29 @@ attempt), MiXCR/TRUST4 intermediates in the kept cll_1 dirs (what `afterScript`
 now removes), the per-patient result copies and the internal-disk offload.
 `/Volumes/vdj`: 58 -> 114 GB free; `work/` 14 GB. Always drop the VM's caches
 after deleting (see cll_5 notes), or the space is not released.
+
+**Never delete a failed task's work dir when a later attempt of the same task
+succeeded** (see the cache miss above). Deleting them made Cell Ranger cll_1 t1/t3 and
+TRUST4 cll_5_t1_bcr start again; the 66 deleted dirs were recreated as empty
+placeholders (`PLACEHOLDER.txt`), which is enough: Nextflow sees the dir, finds no
+valid result and moves to the next hash. To free a failed attempt's space, empty its
+dir but keep the dir.
+
+### IMGT check run, cll_1 t1 + t2 (2026-10-17)
+
+`results_imgt_check/`, 26 tasks, 4 h 50 min (two Cell Ranger runs). Against the default
+references on the same samples:
+- VDJ cells per method within 0.3 %.
+- IGL: exact V agreement 95-97 % -> 100 % for every pair. With its own reference Cell
+  Ranger called the CLL light chain IGLV1-44 in ~160 cells where all others said
+  IGLV1-47 (98 % identical); on the shared reference all say IGLV1-47.
+- TRB, MiXCR only: exact V agreement 99.5 % -> 96 %; ~31 cells of one clone become
+  TRBV12-3 instead of TRBV12-4 (98.5 % identical). The custom MiXCR library has V
+  regions only, while MiXCR's built-in library has leader and genomic structure, which
+  5' reads cover. A library with leader+V from fetch-imgt fails MiXCR's anchor-point
+  inference ("Failed to extract VTranscriptWithout5UTR"). Open: build MiXCR's IMGT
+  library with genomic structure, or restrict its built-in library to the shared
+  alleles.
 
 ### Unified germline reference, `--reference_set imgt` (2026-10-17)
 
