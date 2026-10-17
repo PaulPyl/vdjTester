@@ -26,3 +26,5 @@ results_stub/
 tools/
 results_report_dev/
 results_report_render/
+__pycache__/
+results_*/
