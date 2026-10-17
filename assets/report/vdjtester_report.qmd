@@ -450,16 +450,21 @@ cell and locus (most UMIs) is its call. TRUST4 is restricted to Cell Ranger's GE
 and filtered for ambient chains (≥ 3 UMIs and ≥ 10 % of the barcode's strongest chain;
 on GEX reads ≥ 1 UMI and the same relative rule).
 
-**Expression classes.** UCell scores of B markers (CD79A, CD79B, MS4A1, CD19, CD22,
-PAX5, BANK1) and T markers (CD3D/E/G, CD2, CD247, LCK), with maxRank set to the median
-number of detected genes. A cell is positive when its score clears a threshold (mixture
-model, floored at 0.2) *and* at least 3 markers of the set are detected. *both* cells are
-split by Scrublet into doublets and singlets (candidate B/T hybrids).
+**Expression classes.** UCell scores of 19 B-lineage markers (CD79A/B, MS4A1, CD19,
+CD22, PAX5, BANK1, FCER2, BLK, FCRLA, FCRL1, VPREB3, LINC00926, TNFRSF13C, POU2AF1,
+AFF3, OSBPL10, RALGPS2, BLNK) and 6 T markers (CD3D/E/G, CD2, CD247, LCK), with maxRank
+set to the median number of detected genes. A cell is positive when its score clears a
+threshold (mixture model, floored at 0.15 for B and 0.2 for T) *and* at least 3 markers
+of the set are detected. *both* cells are split by Scrublet into doublets and singlets
+(candidate B/T hybrids).
 
 **Known caveats.**
 
-- In CLL, CD22, CD79B and CD20 (MS4A1) are expressed at low levels, so the B-marker set
-  under-calls CLL cells: many BCR+ cells fall into *neither*.
+- CLL cells express CD22, CD79B and CD20 (MS4A1) at low levels. The B set was extended
+  with B-lineage genes that CLL cells do detect, chosen and checked on these CLL samples
+  against Cell Ranger's BCR-only and TCR-only cells (93-99 % of BCR-only cells called B,
+  ≤ 1.3 % of TCR-only cells). Choosing and checking on the same samples flatters the
+  result; a further patient is the real test.
 - MiXCR verifies its licence online; on clusters whose compute nodes have no internet
   (PDC Dardel) it has to run elsewhere.
 - V-gene germline identity uses the lowest IMGT allele of each gene; a 97 % threshold

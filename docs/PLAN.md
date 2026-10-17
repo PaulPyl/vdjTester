@@ -390,6 +390,34 @@ Results:
 - Expression: B cells under-called again (t3: 3720 of 6111 QC cells "neither";
   226-522 cells per timepoint above the B score but with fewer than 3 markers),
   the same CLL marker problem as cll_1. Scrublet predicts 0-1 doublets.
+  Fixed by the B marker set below.
+
+### B marker set for CLL (2026-10-17)
+
+Scripts: `dev/markers/` (run inside the python container). Reference cells are
+Cell Ranger's BCR-only and TCR-only cells; myeloid-like (>= 2 of LYZ/CST3/S100A9,
+no VDJ, no CD3D/E or CD79A) and NK-like (NKG7 + GNLY, no VDJ, no CD3D/E) cells check
+specificity beyond T cells.
+- **Cause:** CLL cells are dim for CD20, CD22 and CD79B. In BCR-only CLL cells MS4A1
+  is detected in 19-60 %, CD22 in 11-27 %, BANK1 in 26-56 %, so many did not reach 3
+  detected markers.
+- **New set, 19 genes:** the original 7 plus FCER2, BLK, FCRLA, FCRL1, VPREB3,
+  LINC00926, TNFRSF13C, POU2AF1, AFF3, OSBPL10, RALGPS2, BLNK. All B-lineage, each
+  detected in <= 4.5 % of T cells. AFF3 (16 % of myeloid-like cells) and RALGPS2
+  (7 %) are the least specific but cause no myeloid B calls, and dropping them cuts
+  cll_5 t3 recall from 82 % to 61 %. Left out: SPIB, TCF4, IRF8 (pDC), SYK, LYN,
+  HLA-DRA (myeloid), CD5 and LEF1 (also T).
+- **B floor 0.15 (T stays 0.2):** with 19 genes the same evidence gives a lower
+  UCell score; at 0.2, 601 BCR+ cells at cll_5 t3 had 4-9 B markers but scored ~0.17.
+- **Result:** BCR-only cells called B rose from 56-88 % to 93-99 % (cll_1 t1: 639 BCR+
+  "neither" cells -> 55). False B calls: <= 1.3 % of TCR-only cells (11 at cll_5 t3),
+  1 of 520 myeloid-like, 1 of 88 NK-like; healthy 1k B cells 100 %.
+- **Caveat:** genes and floor were chosen and checked on the same six samples; the
+  next patient is the honest test. cll_5 t3 (lowest depth, median 1118 genes) is
+  still the weakest at 93 %.
+- **Unexplained cache miss:** one cll_1 resume at 09:26 re-ran Cell Ranger for t1
+  and t3 although an identical run 12 min later reused them. Runs now use
+  `-dump-hashes json`; the aborted attempt left `work/c7/3e425f…` (19 GB).
 
 ### Original plan: HTML report (step 7)
 

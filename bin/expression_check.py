@@ -26,8 +26,16 @@ Thresholds: a score is called positive above the crossing point of a two-compone
 Gaussian mixture when the score is clearly bimodal (BIC); otherwise above
 --score-min, which is also a floor under the mixture threshold. A B-enriched sample
 has no T population to fit, so the fallback is the normal case for the T score there.
-Default floor: 0.2 for UCell (1k B cells: B cells score ~0.67, 1st percentile 0.38;
-LCK-only cells score T ~0.06, max 0.14), 0.1 for scanpy scores.
+Default floors for UCell: 0.2 for T (1k B cells: LCK-only cells score T ~0.06, max
+0.14) and 0.15 for B (--score-min-b); 0.1 for both with scanpy scores.
+
+The B set has 19 genes. The first 7 (CD79A/B, MS4A1, CD19, CD22, PAX5, BANK1) missed
+CLL cells, which are dim for CD20, CD22 and CD79B: only 56-88 % of BCR-only cells
+in cll_1 and cll_5 were called B. With the 12 added B-lineage genes and the B floor
+lowered from 0.2 to 0.15 (a longer signature gives lower UCell scores for the same
+evidence), 93-99 % are, while at most 1.3 % of TCR-only cells, 1 of 520 myeloid-like
+and 1 of 88 NK-like cells are called B; healthy 1k B cells stay at 100 % (median
+score 0.57). Scratch analysis 2026-10-17, see docs/PLAN.md.
 
 "both" cells are split by Scrublet's doublet call into `both_doublet` and
 `both_singlet`, the latter being candidate B/T hybrid (dual-expresser) cells.
@@ -119,7 +127,9 @@ def main():
     parser.add_argument("--max-rank", type=int, default=None,
                         help="UCell maxRank; default: median detected genes per QC-pass cell")
     parser.add_argument("--score-min", type=float, default=None,
-                        help="score floor / fallback threshold; default 0.2 (ucell) or 0.1 (scanpy)")
+                        help="T score floor / fallback threshold; default 0.2 (ucell) or 0.1 (scanpy)")
+    parser.add_argument("--score-min-b", type=float, default=None,
+                        help="B score floor / fallback threshold; default 0.15 (ucell) or 0.1 (scanpy)")
     parser.add_argument("--min-markers", type=int, default=3,
                         help="distinct marker genes of a set that must be detected")
     parser.add_argument("--min-genes", type=int, default=200)
@@ -129,6 +139,9 @@ def main():
     out = Path(args.outdir)
     if args.score_min is None:
         args.score_min = 0.2 if args.score_method == "ucell" else 0.1
+    if args.score_min_b is None:
+        args.score_min_b = 0.15 if args.score_method == "ucell" else 0.1
+    floors = {"B": args.score_min_b, "T": args.score_min}
 
     adata = sc.read_10x_h5(args.h5, gex_only=True)
     adata.var_names_make_unique()
@@ -182,7 +195,7 @@ def main():
         if args.score_method == "scanpy":
             sc.tl.score_genes(adata, genes, score_name=f"{name}_score", random_state=0)
         ref = adata.obs.loc[adata.obs["qc_pass"], f"{name}_score"]
-        thresholds[name], method = mixture_threshold(ref, args.score_min)
+        thresholds[name], method = mixture_threshold(ref, floors[name])
         adata.obs[f"{name}_pos"] = (adata.obs[f"{name}_score"] > thresholds[name]) & (
             adata.obs[f"{name}_markers_detected"] >= args.min_markers
         )

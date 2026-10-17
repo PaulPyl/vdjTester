@@ -1,11 +1,23 @@
 set	gene	note
 B	CD79A	BCR signalling (Ig-alpha)
 B	CD79B	BCR signalling (Ig-beta)
-B	MS4A1	CD20
+B	MS4A1	CD20; dim in CLL (19-60 % of CLL B cells)
 B	CD19
-B	CD22
+B	CD22	dim in CLL (11-27 %)
 B	PAX5	B-lineage transcription factor
 B	BANK1
+B	FCER2	CD23; high in CLL
+B	BLK	B lymphoid kinase
+B	FCRLA
+B	FCRL1
+B	VPREB3
+B	LINC00926	B-cell-specific lncRNA
+B	TNFRSF13C	BAFF-R
+B	POU2AF1	OBF1
+B	AFF3	detected in 16 % of myeloid-like cells, but never called B there (2026-10-17)
+B	OSBPL10
+B	RALGPS2
+B	BLNK
 T	CD3D	TCR complex
 T	CD3E	TCR complex
 T	CD3G	TCR complex

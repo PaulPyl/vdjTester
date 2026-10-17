@@ -57,6 +57,7 @@ process EXPRESSION_CHECK {
         --score-method ${params.score_method} \\
         ${params.max_rank ? "--max-rank ${params.max_rank}" : ''} \\
         ${params.score_min != null ? "--score-min ${params.score_min}" : ''} \\
+        ${params.score_min_b != null ? "--score-min-b ${params.score_min_b}" : ''} \\
         --min-markers ${params.min_markers} \\
         --outdir .
     for f in expression_*.tsv marker_scores.png; do mv "\$f" "${sample_id}.\$f"; done
