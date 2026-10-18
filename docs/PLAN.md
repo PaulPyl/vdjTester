@@ -496,6 +496,26 @@ make a plain `-resume` pick the wrong session):
     nextflow run . -profile mac --reference_set imgt --samplesheet assets/samplesheet_cll.csv \
         --outdir results_imgt -resume 72a5d2d7-0867-44fe-a32c-0ce2e3f77f26
 
+### Offline runs: UPPMAX Bianca (2026-10-17)
+
+For G_Nordmark's sensitive data on Bianca (no internet anywhere; files through the
+wharf). Details in docs/OFFLINE.md.
+
+- **Local FASTQs:** a `fastq_dir` samplesheet column (Cell Ranger-named FASTQs) as an
+  alternative to ENA `runs`, per row. ENA-mode task hashes are unchanged: a stub run of
+  the branch resumed on a stub run of main kept every CELLRANGER_MULTI, MIXCR,
+  MIXCR_IMGT, TRUST4, IMMCANTATION and COMPARE_* task cached (default and imgt).
+- **`-profile offline` / `-profile bianca`:** Slurm + Apptainer/Singularity, everything
+  from an unpacked bundle (`--bundle_dir`). No FETCH_* step runs offline; a missing
+  reference, image or Cell Ranger stops the run before it starts, naming the file.
+- **Bundle:** `bin/make_offline_bundle.sh` (online; `--dry-run` lists items and sizes,
+  ~18.5 GB) and `unpack.sh` (on the system, checks MANIFEST.sha256).
+- **MiXCR** stays the blocker: offline it runs only with `--mixcr_offline_licence`, once
+  MiLaboratories has given a licence that works offline; otherwise `--skip_mixcr`.
+- **Found on the way:** in Nextflow 26.04 `--some_flag false` arrives as the string
+  `"false"`, which is truthy, so `--skip_mixcr false` or `--trust4_gex false` do not
+  turn anything off/on. Booleans only work as bare flags (true) or from config.
+
 ### Original plan: HTML report (step 7)
 
 **Form.** A `REPORT` process runs once per pipeline run, after `CLONE_TRACKING`. It
