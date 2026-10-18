@@ -477,6 +477,19 @@ Check run on cll_1 t1 + t2 with that first version (outputs removed 2026-10-17):
 IGL exact V agreement rose from 95-97 % to 100 % (Cell Ranger's 10x reference called
 the CLL light chain IGLV1-44 in ~160 cells where all others said IGLV1-47).
 
+Full run, cll_1 + cll_5 (2026-10-17/18, `results_imgt/`): 40 tasks plus 29 cached
+(TRUST4 and the GEX-side steps are shared with the default run). The first attempt died
+at ~22:08 on I/O errors from the vdj volume (no disconnect in the system log; volume
+verified OK afterwards, Lima VM restarted to remount it); the resume reused 11 MiXCR
+tasks. Against the default references, all six samples:
+- VDJ cells: Cell Ranger and Immcantation -0.6 %, MiXCR, TRUST4 unchanged.
+- The two reference-naming artefacts disappear: IGK exact V agreement of every pair
+  with MiXCR 0 % -> 100 % (MiXCR's own library called the cll_5 light chain IGKV1D-27,
+  which IMGT's sets do not have), IGL 95-97 % -> 100 % (the 10x reference called the
+  cll_1 light chain IGLV1-44 in some cells).
+- No other exact V agreement moved by 1 point or more; clone-level (lineage)
+  agreement unchanged (< 3 points).
+
 Run, with an explicit session so per-sample tasks are shared between runs (stub runs
 make a plain `-resume` pick the wrong session):
 
