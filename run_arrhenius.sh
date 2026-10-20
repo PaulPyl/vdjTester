@@ -14,11 +14,17 @@
 #   * Cell Ranger unpacked at params.cellranger_dir (conf/arrhenius.config)
 #   * nextflow secrets set MI_LICENSE <key>   (stored in ~/.nextflow)
 #   * mkdir -p logs   (sbatch writes its log there)
+#   * Nextflow at tools/nextflow-${NXF_RELEASE} (the self-contained -dist build):
+#       curl -sSfL -o tools/nextflow-26.10.2/nextflow \
+#         https://github.com/nextflow-io/nextflow/releases/download/v26.10.2/nextflow-26.10.2-dist
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
 
-# The Nextflow module does not bring Java with it.
-module load Java/21.0.11-bdist Nextflow/25.10.6-eb
+# The site module is Nextflow 25.10, whose default (v1) config parser lets a
+# profile's withName block replace base.config's instead of merging with it.
+NXF_RELEASE=26.10.2
+module load Java/21.0.11-bdist
+export PATH="${PWD}/tools/nextflow-${NXF_RELEASE}:${PATH}"
 
 # Keep Apptainer's own caches in the project, never in $HOME (Apptainer refuses
 # images there). The tmpdir needs room for a whole uncompressed image.
